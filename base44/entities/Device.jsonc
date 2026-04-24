@@ -1,0 +1,88 @@
+{
+  "name": "Device",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "providerId": {
+      "type": "string"
+    },
+    "zoneId": {
+      "type": "string"
+    },
+    "providerDeviceId": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "online",
+        "offline",
+        "warning",
+        "unknown"
+      ],
+      "default": "unknown"
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": true
+    },
+    "isDeleted": {
+      "type": "boolean",
+      "default": false
+    },
+    "defaultVolume": {
+      "type": "number",
+      "default": 50
+    },
+    "minVolume": {
+      "type": "number",
+      "default": 0
+    },
+    "maxVolume": {
+      "type": "number",
+      "default": 100
+    },
+    "currentVolume": {
+      "type": "number"
+    },
+    "currentTrack": {
+      "type": "string"
+    },
+    "currentArtist": {
+      "type": "string"
+    },
+    "currentPlaylist": {
+      "type": "string"
+    },
+    "currentCoverUrl": {
+      "type": "string"
+    },
+    "spotifyExternalUrl": {
+      "type": "string"
+    },
+    "lastSeenAt": {
+      "type": "string"
+    },
+    "lastTestAt": {
+      "type": "string"
+    },
+    "createdBy": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "providerId"
+  ]
+}

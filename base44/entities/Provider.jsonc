@@ -1,0 +1,102 @@
+{
+  "name": "Provider",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "spotify_demo",
+        "apple_music",
+        "business_music",
+        "custom_api",
+        "local_audio"
+      ]
+    },
+    "description": {
+      "type": "string"
+    },
+    "licenseStatus": {
+      "type": "string",
+      "enum": [
+        "demo",
+        "licensed",
+        "unlicensed",
+        "pending"
+      ],
+      "default": "demo"
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": true
+    },
+    "isDefault": {
+      "type": "boolean",
+      "default": false
+    },
+    "authType": {
+      "type": "string",
+      "enum": [
+        "oauth2",
+        "api_key",
+        "bearer_token",
+        "basic_auth",
+        "none"
+      ],
+      "default": "oauth2"
+    },
+    "apiBaseUrl": {
+      "type": "string"
+    },
+    "clientId": {
+      "type": "string"
+    },
+    "clientSecretStored": {
+      "type": "boolean",
+      "default": false
+    },
+    "redirectUri": {
+      "type": "string"
+    },
+    "scopes": {
+      "type": "string"
+    },
+    "accessTokenStored": {
+      "type": "boolean",
+      "default": false
+    },
+    "refreshTokenStored": {
+      "type": "boolean",
+      "default": false
+    },
+    "tokenExpiresAt": {
+      "type": "string"
+    },
+    "connectionStatus": {
+      "type": "string",
+      "enum": [
+        "connected",
+        "disconnected",
+        "error",
+        "expired",
+        "pending"
+      ],
+      "default": "disconnected"
+    },
+    "lastConnectionTestAt": {
+      "type": "string"
+    },
+    "lastSyncAt": {
+      "type": "string"
+    },
+    "createdBy": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "type"
+  ]
+}

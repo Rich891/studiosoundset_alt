@@ -1,0 +1,21 @@
+{
+  "name": "AppSetting",
+  "type": "object",
+  "properties": {
+    "key": {
+      "type": "string"
+    },
+    "value": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
+    "updatedBy": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "key"
+  ]
+}

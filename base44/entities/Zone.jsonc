@@ -1,0 +1,41 @@
+{
+  "name": "Zone",
+  "type": "object",
+  "properties": {
+    "studioId": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "color": {
+      "type": "string",
+      "default": "#6366f1"
+    },
+    "defaultVolume": {
+      "type": "number",
+      "default": 50
+    },
+    "minVolume": {
+      "type": "number",
+      "default": 0
+    },
+    "maxVolume": {
+      "type": "number",
+      "default": 100
+    },
+    "assignedDeviceId": {
+      "type": "string"
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

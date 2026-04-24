@@ -1,0 +1,36 @@
+{
+  "name": "ManualOverride",
+  "type": "object",
+  "properties": {
+    "zoneId": {
+      "type": "string"
+    },
+    "deviceId": {
+      "type": "string"
+    },
+    "overrideVolume": {
+      "type": "number"
+    },
+    "overridePlaylistId": {
+      "type": "string"
+    },
+    "startsAt": {
+      "type": "string"
+    },
+    "endsAt": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "createdBy": {
+      "type": "string"
+    },
+    "expiredAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "zoneId"
+  ]
+}

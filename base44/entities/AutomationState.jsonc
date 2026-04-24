@@ -1,0 +1,40 @@
+{
+  "name": "AutomationState",
+  "type": "object",
+  "properties": {
+    "zoneId": {
+      "type": "string"
+    },
+    "deviceId": {
+      "type": "string"
+    },
+    "lastAppliedPlaylistId": {
+      "type": "string"
+    },
+    "lastAppliedVolume": {
+      "type": "number"
+    },
+    "lastAppliedAt": {
+      "type": "string"
+    },
+    "lastScheduleBlockId": {
+      "type": "string"
+    },
+    "schedulerStatus": {
+      "type": "string",
+      "enum": [
+        "active",
+        "paused",
+        "error",
+        "idle"
+      ],
+      "default": "idle"
+    },
+    "lastError": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "zoneId"
+  ]
+}

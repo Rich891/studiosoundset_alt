@@ -1,0 +1,57 @@
+{
+  "name": "AuditLog",
+  "type": "object",
+  "properties": {
+    "userId": {
+      "type": "string"
+    },
+    "userRole": {
+      "type": "string"
+    },
+    "zoneId": {
+      "type": "string"
+    },
+    "providerId": {
+      "type": "string"
+    },
+    "deviceId": {
+      "type": "string"
+    },
+    "playlistId": {
+      "type": "string"
+    },
+    "scheduleBlockId": {
+      "type": "string"
+    },
+    "action": {
+      "type": "string"
+    },
+    "entityType": {
+      "type": "string"
+    },
+    "entityId": {
+      "type": "string"
+    },
+    "oldValue": {
+      "type": "string"
+    },
+    "newValue": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "success",
+        "error",
+        "warning"
+      ],
+      "default": "success"
+    },
+    "errorMessage": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "action"
+  ]
+}

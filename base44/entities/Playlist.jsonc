@@ -1,0 +1,70 @@
+{
+  "name": "Playlist",
+  "type": "object",
+  "properties": {
+    "providerId": {
+      "type": "string"
+    },
+    "providerPlaylistId": {
+      "type": "string"
+    },
+    "providerPlaylistUri": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "ownerName": {
+      "type": "string"
+    },
+    "mood": {
+      "type": "string"
+    },
+    "energyLevel": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "very_high"
+      ]
+    },
+    "bpmRange": {
+      "type": "string"
+    },
+    "coverUrl": {
+      "type": "string"
+    },
+    "externalUrl": {
+      "type": "string"
+    },
+    "totalTracks": {
+      "type": "number",
+      "default": 0
+    },
+    "isCommerciallySafe": {
+      "type": "boolean",
+      "default": false
+    },
+    "licenseStatus": {
+      "type": "string",
+      "enum": [
+        "demo",
+        "licensed",
+        "unlicensed",
+        "unknown"
+      ],
+      "default": "unknown"
+    },
+    "lastImportedAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "providerId"
+  ]
+}

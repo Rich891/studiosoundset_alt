@@ -1,0 +1,54 @@
+{
+  "name": "PlaylistTrack",
+  "type": "object",
+  "properties": {
+    "playlistId": {
+      "type": "string"
+    },
+    "providerTrackId": {
+      "type": "string"
+    },
+    "providerTrackUri": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "artistName": {
+      "type": "string"
+    },
+    "albumName": {
+      "type": "string"
+    },
+    "albumCoverUrl": {
+      "type": "string"
+    },
+    "durationMs": {
+      "type": "number"
+    },
+    "trackNumber": {
+      "type": "number"
+    },
+    "explicit": {
+      "type": "boolean",
+      "default": false
+    },
+    "externalUrl": {
+      "type": "string"
+    },
+    "isPlayable": {
+      "type": "boolean",
+      "default": true
+    },
+    "addedAt": {
+      "type": "string"
+    },
+    "sortOrder": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "playlistId",
+    "name"
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "name": "ScheduleBlock",
+  "type": "object",
+  "properties": {
+    "zoneId": {
+      "type": "string"
+    },
+    "playlistId": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "dayOfWeek": {
+      "type": "number",
+      "description": "0=Sunday, 1=Monday, ..., 6=Saturday"
+    },
+    "startTime": {
+      "type": "string",
+      "description": "HH:MM format"
+    },
+    "endTime": {
+      "type": "string",
+      "description": "HH:MM format"
+    },
+    "repeatWeekly": {
+      "type": "boolean",
+      "default": true
+    },
+    "baseVolume": {
+      "type": "number",
+      "default": 50
+    },
+    "volumeRampEnabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "startVolume": {
+      "type": "number",
+      "default": 40
+    },
+    "endVolume": {
+      "type": "number",
+      "default": 60
+    },
+    "rampMode": {
+      "type": "string",
+      "enum": [
+        "continuous",
+        "hourly",
+        "every_30_min",
+        "every_15_min"
+      ],
+      "default": "continuous"
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": true
+    },
+    "createdBy": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "zoneId",
+    "startTime",
+    "endTime"
+  ]
+}
