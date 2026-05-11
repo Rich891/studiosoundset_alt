@@ -12,11 +12,12 @@ import PageHeader from '@/components/ui/PageHeader';
 import { toast } from 'sonner';
 
 function extractSpotifyPlaylistId(input) {
-  // Handle full URL: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=...
-  const urlMatch = input.match(/playlist\/([a-zA-Z0-9]+)/);
+  const trimmed = input.trim();
+  // Handle full URL: https://open.spotify.com/playlist/ID?si=...
+  const urlMatch = trimmed.match(/playlist\/([a-zA-Z0-9]+)/);
   if (urlMatch) return urlMatch[1];
-  // Handle bare ID
-  if (/^[a-zA-Z0-9]{22}$/.test(input.trim())) return input.trim();
+  // Handle bare ID (Spotify IDs are alphanumeric, typically 22 chars but can vary)
+  if (/^[a-zA-Z0-9]{10,40}$/.test(trimmed)) return trimmed;
   return null;
 }
 
@@ -230,7 +231,7 @@ export default function ImportPlaylist() {
           <Button
             className="w-full bg-primary hover:bg-primary/90"
             onClick={() => importMutation.mutate()}
-            disabled={!selectedProvider || !playlistUrl || !fetchedPlaylist || (fetchedPlaylist?._isFallback && !customName) || importMutation.isPending}
+            disabled={!selectedProvider || !playlistUrl || !fetchedPlaylist || importMutation.isPending}
           >
             <Download className="w-4 h-4 mr-2" />
             {importMutation.isPending ? 'Importieren...' : 'Playlist importieren'}
