@@ -60,14 +60,66 @@ async function spotifyRequest(accessToken, method, path, body) {
 }
 
 Deno.serve(async (req) => {
-  const base44 = createClientFromRequest(req);
-
   let body;
   try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
   const { action, providerId, deviceId, volume, contextUri, trackUri, positionMs } = body;
+
+  // ── GET SPOTIFY PLAYLIST METADATA ──────────────────────────────────────────────
+  if (action === 'getPlaylistInfo') {
+    const { playlistId } = body;
+    if (!playlistId) return Response.json({ error: 'Missing playlistId' }, { status: 400 });
+    if (!providerId) return Response.json({ error: 'providerId required for playlist lookup' }, { status: 400 });
+    
+    let accessToken = '';
+    
+    // Use createClientFromRequest with asServiceRole to read stored token
+    // (works even without user auth because asServiceRole has full data access)
+    try {
+      const base44 = createClientFromRequest(req);
+      const tokenKey = `spotify_access_token_${providerId}`;
+      const settings = await base44.asServiceRole.entities.AppSetting.filter({ key: tokenKey });
+      if (settings.length > 0) {
+        accessToken = settings[0].value;
+      }
+    } catch (e) {
+      console.error('Could not read token from AppSetting:', e.message);
+    }
+    
+    if (!accessToken) {
+      return Response.json({ error: 'No token stored for this provider' }, { status: 401 });
+    }
+    
+    try {
+      const res = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (res.status === 204) {
+        return Response.json({ success: true, playlist: { ok: true } });
+      }
+      
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        return Response.json({ 
+          error: `${errData?.error?.message || `HTTP ${res.status}`}`
+        }, { status: res.status });
+      }
+      
+      const data = await res.json();
+      return Response.json({ success: true, playlist: data });
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
+
+  // All other actions need providerId and token
   if (!providerId) return Response.json({ error: 'Missing providerId' }, { status: 400 });
 
+  const base44 = createClientFromRequest(req);
   let accessToken;
   try {
     accessToken = await getAccessToken(base44, providerId);
@@ -102,15 +154,6 @@ Deno.serve(async (req) => {
     if (action === 'getDevices') {
       const data = await spotifyRequestWithRefresh('GET', '/me/player/devices');
       return Response.json({ success: true, devices: data.devices || [] });
-    }
-
-    // ── GET SPOTIFY PLAYLIST METADATA ───────────────────────────────────────────
-    if (action === 'getPlaylistInfo') {
-      const { playlistId } = body;
-      if (!playlistId) return Response.json({ error: 'Missing playlistId' }, { status: 400 });
-      // Spotify allows public playlist info without authentication
-      const data = await spotifyRequest('', 'GET', `/playlists/${playlistId}`, null);
-      return Response.json({ success: true, playlist: data });
     }
 
     // ── TRANSFER PLAYBACK TO DEVICE ─────────────────────────────────────────────
