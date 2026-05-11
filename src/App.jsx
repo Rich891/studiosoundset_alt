@@ -24,6 +24,7 @@ import HowItWorks from './pages/HowItWorks';
 import Logs from './pages/Logs';
 import Settings from './pages/Settings';
 import NotFound from './pages/NotFound';
+import SpotifyConnect from './pages/SpotifyConnect';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -69,6 +70,7 @@ const AuthenticatedApp = () => {
         <Route path="/how-it-works" element={<HowItWorks />} />
         <Route path="/logs" element={<Logs />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/spotify-connect" element={<SpotifyConnect />} />
       </Route>
 
       {/* 404 Fallback */}

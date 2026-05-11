@@ -67,20 +67,29 @@ export default function Providers() {
 
   const handleTest = async (provider) => {
     toast.info('Verbindungstest läuft...');
-    await updateMutation.mutateAsync({ 
-      id: provider.id, 
-      data: { lastConnectionTestAt: new Date().toISOString(), connectionStatus: 'pending' } 
-    });
-    // Simulate test
-    setTimeout(async () => {
-      const status = provider.accessTokenStored ? 'connected' : 'disconnected';
-      await updateMutation.mutateAsync({
-        id: provider.id,
-        data: { connectionStatus: status, lastConnectionTestAt: new Date().toISOString() }
-      });
-      if (status === 'connected') toast.success('Verbindung erfolgreich!');
-      else toast.error('Verbindung fehlgeschlagen. Bitte API-Daten prüfen.');
-    }, 1500);
+    updateMutation.mutate({ id: provider.id, data: { connectionStatus: 'pending', lastConnectionTestAt: new Date().toISOString() } });
+
+    if (provider.type === 'spotify_demo') {
+      const res = await base44.functions.invoke('spotifyTest', { providerId: provider.id });
+      queryClient.invalidateQueries({ queryKey: ['providers'] });
+      if (res.data?.success) {
+        toast.success(`Spotify verbunden! Account: ${res.data.profile?.displayName || ''} · ${res.data.devices?.length || 0} Gerät(e) aktiv`);
+      } else {
+        toast.error(`Verbindung fehlgeschlagen: ${res.data?.reason || 'Unbekannter Fehler'}`);
+      }
+    } else {
+      // Generic test for other provider types
+      setTimeout(() => {
+        updateMutation.mutate({ id: provider.id, data: { connectionStatus: provider.accessTokenStored ? 'connected' : 'disconnected', lastConnectionTestAt: new Date().toISOString() } });
+        queryClient.invalidateQueries({ queryKey: ['providers'] });
+        if (provider.accessTokenStored) toast.success('Verbindung erfolgreich!');
+        else toast.error('Kein Token gespeichert. Bitte Provider neu verbinden.');
+      }, 1200);
+    }
+  };
+
+  const handleSpotifyConnect = (provider) => {
+    window.location.href = `/spotify-connect?connect=${provider.id}`;
   };
 
   return (
@@ -198,17 +207,26 @@ export default function Providers() {
                   )}
 
                   <div className="flex gap-2 pt-1">
-                    <Button 
-                      variant="outline" size="sm" className="flex-1 text-xs"
+                    {provider.type === 'spotify_demo' && !provider.accessTokenStored ? (
+                      <Button
+                        size="sm" className="flex-1 text-xs bg-green-600 hover:bg-green-500 text-white"
+                        onClick={() => handleSpotifyConnect(provider)}
+                      >
+                        🎵 Mit Spotify verbinden
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline" size="sm" className="flex-1 text-xs"
+                        onClick={() => handleTest(provider)}
+                      >
+                        <TestTube className="w-3 h-3 mr-1" /> Testen
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" className="flex-1 text-xs"
                       onClick={() => handleTest(provider)}
                     >
-                      <TestTube className="w-3 h-3 mr-1" /> Testen
+                      <RefreshCw className="w-3 h-3 mr-1" /> Prüfen
                     </Button>
-                    <Link to={`/providers/edit/${provider.id}`} className="flex-1">
-                      <Button variant="outline" size="sm" className="w-full text-xs">
-                        <Edit className="w-3 h-3 mr-1" /> Bearbeiten
-                      </Button>
-                    </Link>
                   </div>
                 </CardContent>
               </Card>
