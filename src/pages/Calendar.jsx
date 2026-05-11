@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Plus, Trash2, Edit, GripVertical, Clock, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Edit2, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -11,18 +11,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import PageHeader from '@/components/ui/PageHeader';
+import CalendarGrid from '@/components/calendar/CalendarGrid';
 import { toast } from 'sonner';
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
-const DAYS = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
-const DAYS_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-const HOURS = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
+const DAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+const DAY_INDICES = [1, 2, 3, 4, 5, 6, 0];
 
 export default function Calendar() {
   const [selectedZone, setSelectedZone] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editBlock, setEditBlock] = useState(null);
-  const [newBlockDay, setNewBlockDay] = useState(null);
   const [formData, setFormData] = useState({
     zoneId: '', playlistId: '', title: '', dayOfWeek: 1,
     startTime: '08:00', endTime: '10:00', repeatWeekly: true,
@@ -51,9 +49,7 @@ export default function Calendar() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scheduleBlocks'] });
       toast.success(editBlock ? 'Block aktualisiert.' : 'Block erstellt.');
-      setShowForm(false);
-      setEditBlock(null);
-      setNewBlockDay(null);
+      closeForm();
     },
   });
 
@@ -65,83 +61,57 @@ export default function Calendar() {
     },
   });
 
-  const openEdit = (block) => {
-    setEditBlock(block);
-    setNewBlockDay(null);
-    setFormData({ ...block });
+  const openForm = (dayOfWeek, startTime = '08:00', endTime = '10:00') => {
+    setEditBlock(null);
+    setFormData(prev => ({
+      ...prev,
+      dayOfWeek,
+      startTime,
+      endTime,
+      zoneId: selectedZone || '',
+    }));
     setShowForm(true);
   };
 
-  const openNewBlock = (dayOfWeek, startHour) => {
-    setEditBlock(null);
-    setNewBlockDay(dayOfWeek);
-    setFormData({
-      zoneId: selectedZone || '', playlistId: '', title: '', dayOfWeek,
-      startTime: `${String(startHour).padStart(2, '0')}:00`,
-      endTime: `${String((startHour + 1) % 24).padStart(2, '0')}:00`,
-      repeatWeekly: true,
-      baseVolume: 50, volumeRampEnabled: false, startVolume: 40, endVolume: 60,
-      rampMode: 'continuous', isActive: true,
-    });
+  const editForm = (block) => {
+    setEditBlock(block);
+    setFormData(block);
     setShowForm(true);
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditBlock(null);
   };
 
   const update = (k, v) => setFormData(p => ({ ...p, [k]: v }));
 
-  // Filter blocks by selected zone
-  const filteredBlocks = selectedZone ? blocks.filter(b => b.zoneId === selectedZone) : blocks;
-  const blocksByDay = DAYS.map((_, i) => filteredBlocks.filter(b => b.dayOfWeek === i));
-
-  const handleDragEnd = async (result) => {
-    const { source, destination, draggableId } = result;
-    if (!destination) return;
-
-    const fromDay = parseInt(source.droppableId);
-    const toDay = parseInt(destination.droppableId);
-
-    if (fromDay === toDay && source.index === destination.index) return;
-
-    try {
-      await base44.entities.ScheduleBlock.update(draggableId, { dayOfWeek: toDay });
-      queryClient.invalidateQueries({ queryKey: ['scheduleBlocks'] });
-      toast.success('Block verschoben!');
-    } catch (e) {
-      toast.error('Fehler: ' + e.message);
-    }
-  };
+  const filteredBlocks = selectedZone 
+    ? blocks.filter(b => b.zoneId === selectedZone)
+    : blocks;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-8 space-y-6 max-w-7xl mx-auto">
       <PageHeader
-        title="Kalender"
-        subtitle="Playlists und Lautstärke automatisieren"
+        title="Zeitplaner"
+        subtitle="Wöchentliche Automatisierung planen"
         actions={
-          <Button className="bg-primary hover:bg-primary/90" onClick={() => {
-            setEditBlock(null);
-            setNewBlockDay(null);
-            setFormData({
-              zoneId: selectedZone || '', playlistId: '', title: '', dayOfWeek: 1,
-              startTime: '08:00', endTime: '10:00', repeatWeekly: true,
-              baseVolume: 50, volumeRampEnabled: false, startVolume: 40, endVolume: 60,
-              rampMode: 'continuous', isActive: true,
-            });
-            setShowForm(true);
-          }}>
-            <Plus className="w-4 h-4 mr-2" /> Block erstellen
+          <Button className="bg-primary hover:bg-primary/90 h-10 px-6" onClick={() => openForm(1)}>
+            <Plus className="w-5 h-5 mr-2" /> Neuer Block
           </Button>
         }
       />
 
-      {/* Zone Selector */}
+      {/* Zone Filter */}
       {zones.length > 0 && (
-        <div>
-          <p className="text-sm font-semibold text-muted-foreground mb-3">Nach Zone filtern:</p>
+        <div className="space-y-3">
+          <Label className="text-sm font-semibold">Nach Zone filtern:</Label>
           <div className="flex flex-wrap gap-2">
             <Button
               variant={selectedZone === null ? 'default' : 'outline'}
               size="sm"
               onClick={() => setSelectedZone(null)}
-              className={selectedZone === null ? 'bg-primary' : ''}
+              className="h-9"
             >
               Alle Zonen
             </Button>
@@ -151,8 +121,8 @@ export default function Calendar() {
                 variant={selectedZone === zone.id ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setSelectedZone(zone.id)}
-                style={selectedZone === zone.id ? {} : { borderColor: zone.color, color: zone.color }}
-                className={selectedZone === zone.id ? '' : 'hover:bg-transparent'}
+                className="h-9"
+                style={selectedZone !== zone.id ? { borderColor: zone.color, color: zone.color } : {}}
               >
                 {zone.name}
               </Button>
@@ -161,194 +131,149 @@ export default function Calendar() {
         </div>
       )}
 
-      {filteredBlocks.length === 0 ? (
+      {/* Calendar Grid */}
+      {zones.length === 0 ? (
         <Card className="glass-card border-dashed border-primary/30">
           <CardContent className="p-12 text-center">
             <Clock className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Noch keine Blöcke</h3>
-            <p className="text-muted-foreground text-sm mb-6 max-w-sm mx-auto">
-              {selectedZone ? 'Keine Blöcke für diese Zone.' : 'Erstelle Blöcke für automatische Playlist- und Lautstärkeverwaltung.'}
-            </p>
-            <Button className="bg-primary hover:bg-primary/90" onClick={() => {
-              setEditBlock(null);
-              setNewBlockDay(null);
-              setFormData({
-                zoneId: selectedZone || '', playlistId: '', title: '', dayOfWeek: 1,
-                startTime: '08:00', endTime: '10:00', repeatWeekly: true,
-                baseVolume: 50, volumeRampEnabled: false, startVolume: 40, endVolume: 60,
-                rampMode: 'continuous', isActive: true,
-              });
-              setShowForm(true);
-            }}>
-              <Plus className="w-4 h-4 mr-2" /> Ersten Block erstellen
-            </Button>
+            <h3 className="text-lg font-semibold mb-2">Keine Zonen vorhanden</h3>
+            <p className="text-muted-foreground mb-6">Bitte erstelle zuerst eine Zone bei den Geräten.</p>
+            <a href="/devices/add"><Button className="bg-primary hover:bg-primary/90">Zur Geräteverwaltung</Button></a>
           </CardContent>
         </Card>
       ) : (
-        <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2">
-            {DAYS.map((day, dayIdx) => (
-              <Droppable key={dayIdx} droppableId={String(dayIdx)}>
-                {(provided, snapshot) => (
-                  <div
-                    {...provided.droppableProps}
-                    ref={provided.innerRef}
-                    className={`glass-card rounded-lg overflow-hidden transition-all min-h-96 flex flex-col ${
-                      snapshot.isDraggingOver ? 'bg-primary/10 border-primary/50' : ''
-                    }`}
-                  >
-                    {/* Day Header */}
-                    <div className="sticky top-0 px-3 py-2.5 bg-card/50 border-b border-border">
-                      <p className="text-xs font-bold text-primary">{DAYS_SHORT[dayIdx]}</p>
-                      <p className="text-xs text-muted-foreground">{day}</p>
-                    </div>
-
-                    {/* Blocks Container */}
-                    <div className="flex-1 p-2 space-y-1.5 overflow-y-auto">
-                      {blocksByDay[dayIdx].length === 0 ? (
-                        <div className="h-full flex items-center justify-center text-xs text-muted-foreground text-center">
-                          <p>Keine Blöcke</p>
-                        </div>
-                      ) : (
-                        blocksByDay[dayIdx].map((block, index) => {
-                          const zone = zones.find(z => z.id === block.zoneId);
-                          return (
-                            <Draggable key={block.id} draggableId={block.id} index={index}>
-                              {(provided, snapshot) => (
-                                <div
-                                  ref={provided.innerRef}
-                                  {...provided.draggableProps}
-                                  className={`p-2 rounded-lg text-xs cursor-move hover:opacity-90 transition-all group relative ${
-                                    snapshot.isDragging ? 'shadow-lg scale-105 z-50' : ''
-                                  }`}
-                                  style={{
-                                    background: `${zone?.color || '#6366f1'}18`,
-                                    borderLeft: `3px solid ${zone?.color || '#6366f1'}`,
-                                    ...provided.draggableProps.style,
-                                  }}
-                                >
-                                  <div className="flex items-start gap-2 opacity-0 group-hover:opacity-100 absolute top-1 right-1 transition-opacity z-10">
-                                    <button
-                                      onClick={() => openEdit(block)}
-                                      className="p-1 hover:bg-primary/20 rounded"
-                                      title="Bearbeiten"
-                                    >
-                                      <Edit className="w-3 h-3 text-primary" />
-                                    </button>
-                                    <button
-                                      onClick={() => deleteMutation.mutate(block.id)}
-                                      className="p-1 hover:bg-destructive/20 rounded"
-                                      title="Löschen"
-                                    >
-                                      <Trash2 className="w-3 h-3 text-destructive" />
-                                    </button>
-                                  </div>
-                                  <div className="flex items-start gap-2 pr-12">
-                                    <div {...provided.dragHandleProps} className="mt-0.5 flex-shrink-0">
-                                      <GripVertical className="w-3 h-3 text-muted-foreground/40" />
-                                    </div>
-                                    <div className="flex-1 min-w-0 cursor-pointer hover:opacity-70" onClick={() => openEdit(block)}>
-                                      <p className="font-semibold truncate">{block.title || zone?.name}</p>
-                                      <p className="text-muted-foreground text-xs">{block.startTime}–{block.endTime}</p>
-                                      <p className="text-foreground text-xs mt-0.5">🔊 {block.baseVolume}%</p>
-                                      {!block.isActive && <p className="text-orange-400 text-xs">inaktiv</p>}
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </Draggable>
-                          );
-                        })
-                      )}
-                      {provided.placeholder}
-                    </div>
-
-                    {/* Add Block Button */}
-                    <div className="px-2 py-1.5 border-t border-border/50">
-                      <button
-                        onClick={() => openNewBlock(dayIdx, 8)}
-                        className="w-full text-xs py-1 rounded bg-primary/10 hover:bg-primary/20 text-primary transition-colors flex items-center justify-center gap-1"
-                      >
-                        <Plus className="w-3 h-3" /> Block
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </Droppable>
-            ))}
-          </div>
-        </DragDropContext>
+        <CalendarGrid
+          blocks={filteredBlocks}
+          zones={zones}
+          onOpenForm={openForm}
+          onEdit={editForm}
+          onDelete={(id) => deleteMutation.mutate(id)}
+          selectedZone={selectedZone}
+        />
       )}
 
       {/* Form Dialog */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-lg bg-card border-border">
+        <DialogContent className="max-w-2xl bg-card border-border">
           <DialogHeader>
-            <DialogTitle>{editBlock ? 'Block bearbeiten' : 'Neuen Block erstellen'}</DialogTitle>
+            <DialogTitle className="text-2xl">{editBlock ? 'Block bearbeiten' : 'Zeitfenster erstellen'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 max-h-96 overflow-y-auto">
+          <div className="grid grid-cols-2 gap-6 max-h-96 overflow-y-auto py-6">
+            {/* Zone */}
             <div>
-              <Label className="text-sm">Zone *</Label>
+              <Label className="text-sm font-semibold">Zone *</Label>
               <Select value={formData.zoneId} onValueChange={v => update('zoneId', v)}>
-                <SelectTrigger className="mt-1.5 bg-muted/50"><SelectValue placeholder="Zone auswählen" /></SelectTrigger>
+                <SelectTrigger className="mt-2 h-10 bg-muted/50"><SelectValue placeholder="Zone auswählen" /></SelectTrigger>
                 <SelectContent>
                   {zones.map(z => <SelectItem key={z.id} value={z.id}>{z.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Wochentag */}
             <div>
-              <Label className="text-sm">Titel (optional)</Label>
-              <Input value={formData.title} onChange={e => update('title', e.target.value)} className="mt-1.5 bg-muted/50" placeholder="z.B. Morgentraining" />
+              <Label className="text-sm font-semibold">Wochentag</Label>
+              <Select value={String(formData.dayOfWeek)} onValueChange={v => update('dayOfWeek', parseInt(v))}>
+                <SelectTrigger className="mt-2 h-10 bg-muted/50"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {DAYS.map((d, i) => <SelectItem key={i} value={String(DAY_INDICES[i])}>{d}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-sm">Wochentag</Label>
-                <Select value={String(formData.dayOfWeek)} onValueChange={v => update('dayOfWeek', parseInt(v))}>
-                  <SelectTrigger className="mt-1.5 bg-muted/50"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {DAYS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-sm">Playlist (optional)</Label>
-                <Select value={formData.playlistId} onValueChange={v => update('playlistId', v)}>
-                  <SelectTrigger className="mt-1.5 bg-muted/50"><SelectValue placeholder="Keine" /></SelectTrigger>
-                  <SelectContent>
-                    {playlists.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-sm">Start</Label>
-                <Input type="time" value={formData.startTime} onChange={e => update('startTime', e.target.value)} className="mt-1.5 bg-muted/50" />
-              </div>
-              <div>
-                <Label className="text-sm">Ende</Label>
-                <Input type="time" value={formData.endTime} onChange={e => update('endTime', e.target.value)} className="mt-1.5 bg-muted/50" />
-              </div>
-            </div>
+
+            {/* Startzeit */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label className="text-sm">Lautstärke: {formData.baseVolume}%</Label>
-              </div>
-              <Slider value={[formData.baseVolume]} onValueChange={([v]) => update('baseVolume', v)} />
+              <Label className="text-sm font-semibold">Startzeit</Label>
+              <Input type="time" value={formData.startTime} onChange={e => update('startTime', e.target.value)} className="mt-2 h-10 bg-muted/50" />
             </div>
-            <div className="flex items-center justify-between pt-2">
-              <Label className="text-sm">Aktiv</Label>
-              <Switch checked={formData.isActive} onCheckedChange={v => update('isActive', v)} />
+
+            {/* Endzeit */}
+            <div>
+              <Label className="text-sm font-semibold">Endzeit</Label>
+              <Input type="time" value={formData.endTime} onChange={e => update('endTime', e.target.value)} className="mt-2 h-10 bg-muted/50" />
+            </div>
+
+            {/* Titel */}
+            <div className="col-span-2">
+              <Label className="text-sm font-semibold">Titel (optional)</Label>
+              <Input value={formData.title} onChange={e => update('title', e.target.value)} placeholder="z.B. Morgentraining" className="mt-2 h-10 bg-muted/50" />
+            </div>
+
+            {/* Playlist */}
+            <div className="col-span-2">
+              <Label className="text-sm font-semibold">Playlist</Label>
+              <Select value={formData.playlistId} onValueChange={v => update('playlistId', v)}>
+                <SelectTrigger className="mt-2 h-10 bg-muted/50"><SelectValue placeholder="Keine Playlist" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={null}>Keine</SelectItem>
+                  {playlists.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Basis-Lautstärke */}
+            <div className="col-span-2">
+              <Label className="text-sm font-semibold">Lautstärke: {formData.baseVolume}%</Label>
+              <Slider value={[formData.baseVolume]} onValueChange={([v]) => update('baseVolume', v)} className="mt-3" />
+            </div>
+
+            {/* Rampenverlauf */}
+            <div className="col-span-2">
+              <div className="flex items-center justify-between mb-4">
+                <Label className="text-sm font-semibold">Lautstärkerampe aktivieren</Label>
+                <Switch checked={formData.volumeRampEnabled} onCheckedChange={v => update('volumeRampEnabled', v)} />
+              </div>
+              {formData.volumeRampEnabled && (
+                <div className="space-y-4 p-4 bg-muted/30 rounded-lg">
+                  <div>
+                    <Label className="text-sm">Start: {formData.startVolume}%</Label>
+                    <Slider value={[formData.startVolume]} onValueChange={([v]) => update('startVolume', v)} className="mt-2" />
+                  </div>
+                  <div>
+                    <Label className="text-sm">Ende: {formData.endVolume}%</Label>
+                    <Slider value={[formData.endVolume]} onValueChange={([v]) => update('endVolume', v)} className="mt-2" />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-semibold">Rampenmodus</Label>
+                    <Select value={formData.rampMode} onValueChange={v => update('rampMode', v)}>
+                      <SelectTrigger className="mt-2 h-10 bg-muted/50"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="continuous">Kontinuierlich</SelectItem>
+                        <SelectItem value="hourly">Stündlich</SelectItem>
+                        <SelectItem value="every_30_min">Alle 30 Min</SelectItem>
+                        <SelectItem value="every_15_min">Alle 15 Min</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Aktiv */}
+            <div className="col-span-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold">Aktiv</Label>
+                <Switch checked={formData.isActive} onCheckedChange={v => update('isActive', v)} />
+              </div>
             </div>
           </div>
-          <div className="flex gap-2 pt-4 border-t border-border">
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-6 border-t border-border">
             {editBlock && (
-              <Button variant="destructive" size="sm" onClick={() => { deleteMutation.mutate(editBlock.id); setShowForm(false); }}>
-                Löschen
+              <Button variant="destructive" onClick={() => {
+                deleteMutation.mutate(editBlock.id);
+                closeForm();
+              }}>
+                <Trash2 className="w-4 h-4 mr-2" /> Löschen
               </Button>
             )}
-            <Button variant="outline" className="flex-1" onClick={() => setShowForm(false)}>Abbrechen</Button>
-            <Button className="flex-1 bg-primary hover:bg-primary/90" onClick={() => saveMutation.mutate(formData)} disabled={saveMutation.isPending || !formData.zoneId}>
+            <Button variant="outline" className="flex-1" onClick={closeForm}>Abbrechen</Button>
+            <Button 
+              className="flex-1 bg-primary hover:bg-primary/90 h-10"
+              onClick={() => saveMutation.mutate(formData)}
+              disabled={saveMutation.isPending || !formData.zoneId}
+            >
               {saveMutation.isPending ? 'Speichern...' : 'Speichern'}
             </Button>
           </div>
