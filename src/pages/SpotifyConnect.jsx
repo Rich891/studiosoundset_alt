@@ -4,18 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID || '';
 
-const SCOPES = [
-  'user-read-private',
-  'user-read-email',
-  'user-read-playback-state',
-  'user-modify-playback-state',
-  'user-read-currently-playing',
-  'playlist-read-private',
-  'playlist-read-collaborative',
-  'streaming',
-].join(' ');
 
 export default function SpotifyConnect() {
   const navigate = useNavigate();
@@ -61,18 +50,20 @@ export default function SpotifyConnect() {
     }
   }, []);
 
-  const handleConnect = (pId) => {
-    // pId comes from providers page via URL param
+  const handleConnect = async (pId) => {
     const targetProviderId = pId || providerId || 'default';
     const redirectUri = `${window.location.origin}/spotify-connect`;
-    const params = new URLSearchParams({
-      client_id: CLIENT_ID,
-      response_type: 'code',
-      redirect_uri: redirectUri,
-      scope: SCOPES,
-      state: targetProviderId,
+    const res = await base44.functions.invoke('spotifyAuth', {
+      action: 'getAuthUrl',
+      redirectUri,
+      providerId: targetProviderId,
     });
-    window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
+    if (res.data?.url) {
+      window.location.href = res.data.url;
+    } else {
+      setStatus('error');
+      setMessage('Konnte Spotify-Auth-URL nicht laden. Bitte prüfe SPOTIFY_CLIENT_ID in den App-Secrets.');
+    }
   };
 
   // Called from providers page with ?connect=providerId

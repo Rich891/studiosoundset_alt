@@ -10,10 +10,29 @@ Deno.serve(async (req) => {
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json();
-  const { action, code, redirectUri, refreshToken, providerId } = body;
+  const { action, code, redirectUri, refreshToken, providerId, scopes } = body;
 
   // Build auth header
   const authHeader = 'Basic ' + btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
+
+  // ── GET AUTH URL (frontend doesn't need client_id) ───────────────────────────
+  if (action === 'getAuthUrl') {
+    if (!redirectUri || !providerId) return Response.json({ error: 'Missing redirectUri or providerId' }, { status: 400 });
+    const scopeStr = scopes || [
+      'user-read-private', 'user-read-email',
+      'user-read-playback-state', 'user-modify-playback-state',
+      'user-read-currently-playing', 'playlist-read-private',
+      'playlist-read-collaborative', 'streaming',
+    ].join(' ');
+    const params = new URLSearchParams({
+      client_id: CLIENT_ID,
+      response_type: 'code',
+      redirect_uri: redirectUri,
+      scope: scopeStr,
+      state: providerId,
+    });
+    return Response.json({ url: `https://accounts.spotify.com/authorize?${params.toString()}` });
+  }
 
   // ── EXCHANGE CODE FOR TOKEN ──────────────────────────────────────────────────
   if (action === 'exchange') {
