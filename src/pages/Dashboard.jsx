@@ -13,7 +13,6 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import NowPlayingCard from '@/components/dashboard/NowPlayingCard';
 import SystemStatusCard from '@/components/dashboard/SystemStatusCard';
 import { format } from 'date-fns';
-import { de } from 'date-fns/locale';
 
 export default function Dashboard() {
   const { data: providers = [] } = useQuery({
@@ -76,7 +75,7 @@ export default function Dashboard() {
             Studio Sound <span className="gradient-text">Control Pro</span>
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            {format(new Date(), "EEEE, d. MMMM yyyy", { locale: de })} · {format(new Date(), 'HH:mm')} Uhr
+            {format(new Date(), "dd.MM.yyyy")} · {format(new Date(), 'HH:mm')} Uhr
           </p>
         </div>
         <div className="flex items-center gap-2">
