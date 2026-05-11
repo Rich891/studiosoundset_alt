@@ -1,14 +1,13 @@
-import { useState } from 'react';
-import { GripVertical, Edit2, Trash2, Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { useState, useRef } from 'react';
+import { Edit2, Trash2 } from 'lucide-react';
 
 const HOURS = Array.from({ length: 19 }, (_, i) => i + 5);
 const DAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
 const DAY_INDICES = [1, 2, 3, 4, 5, 6, 0];
 
 export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDelete, selectedZone }) {
-  const [dragStart, setDragStart] = useState(null);
+  const [dragState, setDragState] = useState(null);
+  const gridRefs = useRef({});
 
   // Filter blocks by zone
   const filteredBlocks = selectedZone 
@@ -33,61 +32,104 @@ export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDele
     return { topPercent, heightPercent };
   };
 
-  const getTimeFromPosition = (grid, clientY) => {
+  // Berechne Zeit von Y-Position
+  const timeFromY = (grid, clientY) => {
+    if (!grid) return null;
     const rect = grid.getBoundingClientRect();
-    const relativeY = clientY - rect.top;
-    const percentOfHeight = relativeY / rect.height;
-    const timeValue = percentOfHeight * 19;
-    const hours = Math.floor(timeValue) + 5;
-    const minutes = Math.round((timeValue % 1) * 60);
-    return { hours: Math.min(23, Math.max(5, hours)), minutes: Math.round(minutes / 15) * 15 };
+    const y = clientY - rect.top;
+    const percent = Math.max(0, Math.min(1, y / rect.height));
+    const hourValue = percent * 19 + 5;
+    const hour = Math.floor(hourValue);
+    const minute = Math.round((hourValue - hour) * 60 / 15) * 15; // Runde auf 15-Min
+    return { hour: Math.min(23, hour), minute };
   };
 
-  const handleGridMouseDown = (e, dayIdx) => {
-    const grid = e.currentTarget;
-    if (e.target !== grid && e.target.closest('.block-element')) return;
+  const handleMouseDown = (e, dayIdx) => {
+    if (e.target.closest('button')) return;
     
-    const { hours: startHour, minutes: startMin } = getTimeFromPosition(grid, e.clientY);
-    
-    setDragStart({
+    const grid = gridRefs.current[dayIdx];
+    if (!grid) return;
+
+    const startTime = timeFromY(grid, e.clientY);
+    if (!startTime) return;
+
+    setDragState({
       dayIdx,
-      startHour,
-      startMin,
+      startTime,
+      currentTime: startTime,
+      isDragging: true,
     });
   };
 
-  const handleGridMouseMove = (e, dayIdx) => {
-    if (!dragStart || dragStart.dayIdx !== dayIdx) return;
+  const handleMouseMove = (e) => {
+    if (!dragState?.isDragging) return;
+
+    const grid = gridRefs.current[dragState.dayIdx];
+    if (!grid) return;
+
+    const currentTime = timeFromY(grid, e.clientY);
+    if (!currentTime) return;
+
+    setDragState(prev => ({
+      ...prev,
+      currentTime,
+    }));
   };
 
-  const handleGridMouseUp = (e, dayIdx) => {
-    if (!dragStart || dragStart.dayIdx !== dayIdx) {
-      setDragStart(null);
-      return;
+  const handleMouseUp = (e) => {
+    if (!dragState?.isDragging) return;
+
+    const { dayIdx, startTime, currentTime } = dragState;
+
+    let start = startTime;
+    let end = currentTime;
+
+    // Sortiere so dass start < end
+    if (start.hour > end.hour || (start.hour === end.hour && start.minute >= end.minute)) {
+      [start, end] = [end, start];
     }
 
-    const grid = e.currentTarget;
-    const { hours: endHour, minutes: endMin } = getTimeFromPosition(grid, e.clientY);
-    
-    const startHour = dragStart.startHour;
-    const startMin = dragStart.startMin;
-
-    // Stelle sicher dass End > Start
-    let finalStart = `${String(startHour).padStart(2, '0')}:${String(startMin).padStart(2, '0')}`;
-    let finalEnd = `${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
-
-    if (finalStart === finalEnd) {
-      finalEnd = `${String(endHour + 1).padStart(2, '0')}:00`;
-    } else if (finalStart > finalEnd) {
-      [finalStart, finalEnd] = [finalEnd, finalStart];
+    // Stelle sicher dass mindestens 15 Min Differenz
+    if (start.hour === end.hour && start.minute === end.minute) {
+      end = { ...end, minute: (end.minute + 15) % 60 };
+      if (end.minute < start.minute) {
+        end.hour += 1;
+      }
     }
 
-    onOpenForm(DAY_INDICES[dayIdx], finalStart, finalEnd);
-    setDragStart(null);
+    const startStr = `${String(start.hour).padStart(2, '0')}:${String(start.minute).padStart(2, '0')}`;
+    const endStr = `${String(end.hour).padStart(2, '0')}:${String(end.minute).padStart(2, '0')}`;
+
+    onOpenForm(DAY_INDICES[dayIdx], startStr, endStr);
+
+    setDragState(null);
+  };
+
+  const getDragPreviewStyle = () => {
+    if (!dragState?.isDragging) return null;
+
+    const { startTime, currentTime } = dragState;
+    let start = startTime;
+    let end = currentTime;
+
+    if (start.hour > end.hour || (start.hour === end.hour && start.minute >= end.minute)) {
+      [start, end] = [end, start];
+    }
+
+    const startTotal = start.hour + start.minute / 60;
+    const endTotal = end.hour + end.minute / 60;
+
+    const topPercent = ((startTotal - 5) / 19) * 100;
+    const heightPercent = ((endTotal - startTotal) / 19) * 100;
+
+    return {
+      top: `${topPercent}%`,
+      height: `${heightPercent}%`,
+    };
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
       {/* Legend */}
       <div className="flex items-center gap-2 flex-wrap text-xs">
         <span className="text-muted-foreground">Ziehe über einen Zeitbereich um einen Block zu erstellen</span>
@@ -112,11 +154,9 @@ export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDele
           <div key={dayIdx} className="col-span-1">
             <div className="text-xs font-semibold text-foreground mb-2 text-center">{day}</div>
             <div 
+              ref={(el) => { gridRefs.current[dayIdx] = el; }}
               className="relative border border-border/30 rounded bg-card/50 h-[570px] cursor-cell select-none"
-              onMouseDown={(e) => handleGridMouseDown(e, dayIdx)}
-              onMouseMove={(e) => handleGridMouseMove(e, dayIdx)}
-              onMouseUp={(e) => handleGridMouseUp(e, dayIdx)}
-              onMouseLeave={() => setDragStart(null)}
+              onMouseDown={(e) => handleMouseDown(e, dayIdx)}
             >
               {/* Hour grid */}
               {HOURS.map((hour) => (
@@ -137,7 +177,7 @@ export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDele
                 return (
                   <div
                     key={block.id}
-                    className="absolute left-1 right-1 rounded-lg p-2 text-xs group transition-all hover:shadow-lg hover:z-40 block-element pointer-events-auto"
+                    className="absolute left-1 right-1 rounded-lg p-2 text-xs group transition-all hover:shadow-lg hover:z-40 pointer-events-auto"
                     style={{
                       top: `${topPercent}%`,
                       height: `${heightPercent}%`,
@@ -159,7 +199,7 @@ export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDele
                     </div>
 
                     {/* Hover Actions */}
-                    <div className="opacity-0 group-hover:opacity-100 absolute top-1 right-1 transition-opacity flex gap-1 bg-black/50 rounded p-1">
+                    <div className="opacity-0 group-hover:opacity-100 absolute top-1 right-1 transition-opacity flex gap-1 bg-black/50 rounded p-1 pointer-events-auto">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -182,6 +222,18 @@ export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDele
                   </div>
                 );
               })}
+
+              {/* Drag Preview */}
+              {dragState?.isDragging && getDragPreviewStyle() && (
+                <div
+                  className="absolute left-1 right-1 rounded-lg border-2 border-primary bg-primary/20 pointer-events-none z-50 transition-all"
+                  style={getDragPreviewStyle()}
+                >
+                  <div className="p-2 text-xs font-semibold text-primary">
+                    {dragState.startTime.hour}:{String(dragState.startTime.minute).padStart(2, '0')} → {dragState.currentTime.hour}:{String(dragState.currentTime.minute).padStart(2, '0')}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ))}
