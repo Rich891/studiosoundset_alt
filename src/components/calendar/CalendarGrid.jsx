@@ -8,7 +8,6 @@ const DAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samsta
 const DAY_INDICES = [1, 2, 3, 4, 5, 6, 0];
 
 export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDelete, selectedZone }) {
-  const [hoveredTime, setHoveredTime] = useState(null);
   const [dragStart, setDragStart] = useState(null);
 
   // Filter blocks by zone
@@ -34,17 +33,50 @@ export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDele
     return { topPercent, heightPercent };
   };
 
-  const handleGridClick = (day, hour, minute) => {
-    const startTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-    const endTime = `${String(hour + 1).padStart(2, '0')}:00`;
-    onOpenForm(day, startTime, endTime);
+  const getTimeFromPosition = (element, clientY) => {
+    const rect = element.getBoundingClientRect();
+    const relativeY = clientY - rect.top;
+    const percentOfHeight = relativeY / rect.height;
+    const hours = Math.floor(percentOfHeight * 19) + 5;
+    const minutes = Math.round((percentOfHeight * 19 - Math.floor(percentOfHeight * 19)) * 60);
+    return { hours: Math.min(23, hours), minutes };
+  };
+
+  const handleMouseDown = (e, dayIdx) => {
+    if (e.target.closest('button') || e.target.closest('[class*="group-hover"]')) return;
+    
+    const grid = e.currentTarget;
+    const { hours: startHour, minutes: startMin } = getTimeFromPosition(grid, e.clientY);
+    
+    setDragStart({
+      dayIdx,
+      startHour,
+      startMin,
+      startY: e.clientY,
+    });
+  };
+
+  const handleMouseUp = (e, dayIdx) => {
+    if (!dragStart || dragStart.dayIdx !== dayIdx) return;
+
+    const grid = e.currentTarget;
+    const { hours: endHour, minutes: endMin } = getTimeFromPosition(grid, e.clientY);
+    
+    const startTime = `${String(dragStart.startHour).padStart(2, '0')}:${String(dragStart.startMin).padStart(2, '0')}`;
+    const endTime = `${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
+    
+    if (startTime !== endTime) {
+      onOpenForm(DAY_INDICES[dayIdx], startTime, endTime);
+    }
+    
+    setDragStart(null);
   };
 
   return (
     <div className="space-y-4">
       {/* Legend */}
       <div className="flex items-center gap-2 flex-wrap text-xs">
-        <span className="text-muted-foreground">Klicke auf einen Slot zum Erstellen</span>
+        <span className="text-muted-foreground">Ziehe über einen Zeitbereich um einen Block zu erstellen</span>
       </div>
 
       {/* Calendar Grid */}
@@ -65,10 +97,15 @@ export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDele
         {DAYS.map((day, dayIdx) => (
           <div key={dayIdx} className="col-span-1">
             <div className="text-xs font-semibold text-foreground mb-2 text-center">{day}</div>
-            <div className="relative border border-border/30 rounded bg-card/50 min-h-96">
+            <div 
+              className="relative border border-border/30 rounded bg-card/50 min-h-96 cursor-cell select-none"
+              onMouseDown={(e) => handleMouseDown(e, dayIdx)}
+              onMouseUp={(e) => handleMouseUp(e, dayIdx)}
+              onMouseLeave={() => setDragStart(null)}
+            >
               {/* Hour grid */}
               {HOURS.map((hour) => (
-                <div key={hour} className="h-20 border-b border-border/20 hover:bg-primary/5 cursor-pointer transition-colors" onClick={() => handleGridClick(DAY_INDICES[dayIdx], hour, 0)}>
+                <div key={hour} className="h-20 border-b border-border/20 hover:bg-primary/5 transition-colors">
                   {/* 15-min subdivisions */}
                   {[0, 15, 30, 45].map((min) => (
                     <div key={min} className="h-5 border-b border-border/10 text-xs px-1" />
