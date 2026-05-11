@@ -33,42 +33,56 @@ export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDele
     return { topPercent, heightPercent };
   };
 
-  const getTimeFromPosition = (element, clientY) => {
-    const rect = element.getBoundingClientRect();
+  const getTimeFromPosition = (grid, clientY) => {
+    const rect = grid.getBoundingClientRect();
     const relativeY = clientY - rect.top;
     const percentOfHeight = relativeY / rect.height;
-    const hours = Math.floor(percentOfHeight * 19) + 5;
-    const minutes = Math.round((percentOfHeight * 19 - Math.floor(percentOfHeight * 19)) * 60);
-    return { hours: Math.min(23, hours), minutes };
+    const timeValue = percentOfHeight * 19;
+    const hours = Math.floor(timeValue) + 5;
+    const minutes = Math.round((timeValue % 1) * 60);
+    return { hours: Math.min(23, Math.max(5, hours)), minutes: Math.round(minutes / 15) * 15 };
   };
 
-  const handleMouseDown = (e, dayIdx) => {
-    if (e.target.closest('button') || e.target.closest('[class*="group-hover"]')) return;
-    
+  const handleGridMouseDown = (e, dayIdx) => {
     const grid = e.currentTarget;
+    if (e.target !== grid && e.target.closest('.block-element')) return;
+    
     const { hours: startHour, minutes: startMin } = getTimeFromPosition(grid, e.clientY);
     
     setDragStart({
       dayIdx,
       startHour,
       startMin,
-      startY: e.clientY,
     });
   };
 
-  const handleMouseUp = (e, dayIdx) => {
+  const handleGridMouseMove = (e, dayIdx) => {
     if (!dragStart || dragStart.dayIdx !== dayIdx) return;
+  };
+
+  const handleGridMouseUp = (e, dayIdx) => {
+    if (!dragStart || dragStart.dayIdx !== dayIdx) {
+      setDragStart(null);
+      return;
+    }
 
     const grid = e.currentTarget;
     const { hours: endHour, minutes: endMin } = getTimeFromPosition(grid, e.clientY);
     
-    const startTime = `${String(dragStart.startHour).padStart(2, '0')}:${String(dragStart.startMin).padStart(2, '0')}`;
-    const endTime = `${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
-    
-    if (startTime !== endTime) {
-      onOpenForm(DAY_INDICES[dayIdx], startTime, endTime);
+    const startHour = dragStart.startHour;
+    const startMin = dragStart.startMin;
+
+    // Stelle sicher dass End > Start
+    let finalStart = `${String(startHour).padStart(2, '0')}:${String(startMin).padStart(2, '0')}`;
+    let finalEnd = `${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
+
+    if (finalStart === finalEnd) {
+      finalEnd = `${String(endHour + 1).padStart(2, '0')}:00`;
+    } else if (finalStart > finalEnd) {
+      [finalStart, finalEnd] = [finalEnd, finalStart];
     }
-    
+
+    onOpenForm(DAY_INDICES[dayIdx], finalStart, finalEnd);
     setDragStart(null);
   };
 
@@ -98,14 +112,15 @@ export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDele
           <div key={dayIdx} className="col-span-1">
             <div className="text-xs font-semibold text-foreground mb-2 text-center">{day}</div>
             <div 
-              className="relative border border-border/30 rounded bg-card/50 min-h-96 cursor-cell select-none"
-              onMouseDown={(e) => handleMouseDown(e, dayIdx)}
-              onMouseUp={(e) => handleMouseUp(e, dayIdx)}
+              className="relative border border-border/30 rounded bg-card/50 h-[570px] cursor-cell select-none"
+              onMouseDown={(e) => handleGridMouseDown(e, dayIdx)}
+              onMouseMove={(e) => handleGridMouseMove(e, dayIdx)}
+              onMouseUp={(e) => handleGridMouseUp(e, dayIdx)}
               onMouseLeave={() => setDragStart(null)}
             >
               {/* Hour grid */}
               {HOURS.map((hour) => (
-                <div key={hour} className="h-20 border-b border-border/20 hover:bg-primary/5 transition-colors">
+                <div key={hour} className="h-20 border-b border-border/20 hover:bg-primary/5 transition-colors pointer-events-none">
                   {/* 15-min subdivisions */}
                   {[0, 15, 30, 45].map((min) => (
                     <div key={min} className="h-5 border-b border-border/10 text-xs px-1" />
@@ -122,7 +137,7 @@ export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDele
                 return (
                   <div
                     key={block.id}
-                    className="absolute left-1 right-1 rounded-lg p-2 text-xs group transition-all hover:shadow-lg hover:z-40"
+                    className="absolute left-1 right-1 rounded-lg p-2 text-xs group transition-all hover:shadow-lg hover:z-40 block-element pointer-events-auto"
                     style={{
                       top: `${topPercent}%`,
                       height: `${heightPercent}%`,
