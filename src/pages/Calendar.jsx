@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Plus, Calendar as CalendarIcon, Trash2, Edit, Clock, GripVertical } from 'lucide-react';
+import { Plus, Trash2, Edit, GripVertical, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -98,18 +98,18 @@ export default function Calendar() {
       queryClient.invalidateQueries({ queryKey: ['scheduleBlocks'] });
       toast.success('Block verschoben!');
     } catch (e) {
-      toast.error('Fehler beim Verschieben: ' + e.message);
+      toast.error('Fehler: ' + e.message);
     }
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto">
       <PageHeader
         title="Kalender"
-        subtitle="Zeitgesteuerte Playlist- und Lautstärkeautomatisierung"
+        subtitle="Playlists und Lautstärke automatisieren"
         actions={
           <Button className="bg-primary hover:bg-primary/90" onClick={openNew}>
-            <Plus className="w-4 h-4 mr-2" /> Zeitblock erstellen
+            <Plus className="w-4 h-4 mr-2" /> Block erstellen
           </Button>
         }
       />
@@ -117,34 +117,34 @@ export default function Calendar() {
       {blocks.length === 0 ? (
         <Card className="glass-card border-dashed border-primary/30">
           <CardContent className="p-12 text-center">
-            <CalendarIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Noch keine Zeitfenster geplant</h3>
-            <p className="text-muted-foreground text-sm mb-6">
-              Erstelle Zeitblöcke, um automatisch Playlists und Lautstärken zu steuern.
+            <Clock className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Noch keine Zeitblöcke</h3>
+            <p className="text-muted-foreground text-sm mb-6 max-w-sm mx-auto">
+              Erstelle Blöcke für automatische Playlist- und Lautstärkeverwaltung pro Wochentag.
             </p>
             <Button className="bg-primary hover:bg-primary/90" onClick={openNew}>
-              <Plus className="w-4 h-4 mr-2" /> Zeitfenster erstellen
+              <Plus className="w-4 h-4 mr-2" /> Ersten Block erstellen
             </Button>
           </CardContent>
         </Card>
       ) : (
         <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
             {DAYS.map((day, dayIdx) => (
               <Droppable key={dayIdx} droppableId={String(dayIdx)}>
                 {(provided, snapshot) => (
                   <div
                     {...provided.droppableProps}
                     ref={provided.innerRef}
-                    className={`glass-card rounded-xl overflow-hidden transition-colors ${
+                    className={`glass-card rounded-lg overflow-hidden transition-all ${
                       snapshot.isDraggingOver ? 'bg-primary/10 border-primary/50' : ''
                     }`}
                   >
-                    <div className="px-3 py-2 border-b border-border">
+                    <div className="sticky top-0 px-3 py-2 bg-card/50 border-b border-border">
                       <p className="text-xs font-bold text-primary">{DAYS_SHORT[dayIdx]}</p>
                       <p className="text-xs text-muted-foreground">{day}</p>
                     </div>
-                    <div className="p-2 space-y-2 min-h-24">
+                    <div className="p-2 space-y-2 min-h-32">
                       {blocksByDay[dayIdx].map((block, index) => {
                         const zone = zones.find(z => z.id === block.zoneId);
                         return (
@@ -153,25 +153,39 @@ export default function Calendar() {
                               <div
                                 ref={provided.innerRef}
                                 {...provided.draggableProps}
-                                className={`p-2 rounded-lg text-xs cursor-move hover:opacity-80 transition-all group relative ${
-                                  snapshot.isDragging ? 'shadow-lg scale-105' : ''
+                                className={`p-2.5 rounded-lg text-xs cursor-move hover:opacity-90 transition-all group relative ${
+                                  snapshot.isDragging ? 'shadow-lg scale-105 z-50' : ''
                                 }`}
                                 style={{
-                                  background: `${zone?.color || '#6366f1'}20`,
+                                  background: `${zone?.color || '#6366f1'}15`,
                                   borderLeft: `3px solid ${zone?.color || '#6366f1'}`,
                                   ...provided.draggableProps.style,
                                 }}
                               >
+                                <div className="flex items-start gap-2 opacity-0 group-hover:opacity-100 absolute top-1 right-1 transition-opacity z-10">
+                                  <button
+                                    onClick={() => openEdit(block)}
+                                    className="p-1 hover:bg-primary/20 rounded"
+                                  >
+                                    <Edit className="w-3 h-3 text-primary" />
+                                  </button>
+                                  <button
+                                    onClick={() => deleteMutation.mutate(block.id)}
+                                    className="p-1 hover:bg-destructive/20 rounded"
+                                  >
+                                    <Trash2 className="w-3 h-3 text-destructive" />
+                                  </button>
+                                </div>
                                 <div className="flex items-start gap-2">
                                   <div {...provided.dragHandleProps} className="mt-0.5 flex-shrink-0">
-                                    <GripVertical className="w-3 h-3 text-muted-foreground/50" />
+                                    <GripVertical className="w-3 h-3 text-muted-foreground/40" />
                                   </div>
-                                  <div className="flex-1 min-w-0" onClick={() => openEdit(block)}>
-                                    <p className="font-medium truncate">{block.title || zone?.name || 'Block'}</p>
+                                  <div className="flex-1 min-w-0 pr-8" onClick={() => openEdit(block)}>
+                                    <p className="font-semibold truncate">{block.title || zone?.name || 'Block'}</p>
                                     <p className="text-muted-foreground">{block.startTime}–{block.endTime}</p>
                                     <div className="flex items-center gap-1 mt-1">
-                                      <span className="text-muted-foreground">🔊 {block.baseVolume}%</span>
-                                      {!block.isActive && <span className="text-orange-400">inaktiv</span>}
+                                      <span className="text-foreground">🔊 {block.baseVolume}%</span>
+                                      {!block.isActive && <span className="text-orange-400 text-xs">inaktiv</span>}
                                     </div>
                                   </div>
                                 </div>
@@ -190,30 +204,31 @@ export default function Calendar() {
         </DragDropContext>
       )}
 
+      {/* Form Dialog */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="max-w-lg bg-card border-border">
           <DialogHeader>
-            <DialogTitle>{editBlock ? 'Block bearbeiten' : 'Neuen Zeitblock erstellen'}</DialogTitle>
+            <DialogTitle>{editBlock ? 'Block bearbeiten' : 'Neuen Block erstellen'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 max-h-96 overflow-y-auto">
             <div>
-              <Label>Titel</Label>
-              <Input value={formData.title} onChange={e => update('title', e.target.value)} className="mt-1 bg-muted/50" placeholder="z.B. Morgentraining" />
+              <Label className="text-sm">Titel</Label>
+              <Input value={formData.title} onChange={e => update('title', e.target.value)} className="mt-1.5 bg-muted/50" placeholder="z.B. Morgentraining" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Wochentag</Label>
+                <Label className="text-sm">Wochentag</Label>
                 <Select value={String(formData.dayOfWeek)} onValueChange={v => update('dayOfWeek', parseInt(v))}>
-                  <SelectTrigger className="mt-1 bg-muted/50"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="mt-1.5 bg-muted/50"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {DAYS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label>Zone</Label>
+                <Label className="text-sm">Zone</Label>
                 <Select value={formData.zoneId} onValueChange={v => update('zoneId', v)}>
-                  <SelectTrigger className="mt-1 bg-muted/50"><SelectValue placeholder="Zone wählen" /></SelectTrigger>
+                  <SelectTrigger className="mt-1.5 bg-muted/50"><SelectValue placeholder="Zone" /></SelectTrigger>
                   <SelectContent>
                     {zones.map(z => <SelectItem key={z.id} value={z.id}>{z.name}</SelectItem>)}
                   </SelectContent>
@@ -222,18 +237,18 @@ export default function Calendar() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Startzeit</Label>
-                <Input type="time" value={formData.startTime} onChange={e => update('startTime', e.target.value)} className="mt-1 bg-muted/50" />
+                <Label className="text-sm">Start</Label>
+                <Input type="time" value={formData.startTime} onChange={e => update('startTime', e.target.value)} className="mt-1.5 bg-muted/50" />
               </div>
               <div>
-                <Label>Endzeit</Label>
-                <Input type="time" value={formData.endTime} onChange={e => update('endTime', e.target.value)} className="mt-1 bg-muted/50" />
+                <Label className="text-sm">Ende</Label>
+                <Input type="time" value={formData.endTime} onChange={e => update('endTime', e.target.value)} className="mt-1.5 bg-muted/50" />
               </div>
             </div>
             <div>
-              <Label>Playlist</Label>
+              <Label className="text-sm">Playlist (optional)</Label>
               <Select value={formData.playlistId} onValueChange={v => update('playlistId', v)}>
-                <SelectTrigger className="mt-1 bg-muted/50"><SelectValue placeholder="Playlist wählen (optional)" /></SelectTrigger>
+                <SelectTrigger className="mt-1.5 bg-muted/50"><SelectValue placeholder="Keine" /></SelectTrigger>
                 <SelectContent>
                   {playlists.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                 </SelectContent>
@@ -241,33 +256,27 @@ export default function Calendar() {
             </div>
             <div>
               <div className="flex items-center justify-between mb-2">
-                <Label>Lautstärke: {formData.baseVolume}%</Label>
+                <Label className="text-sm">Lautstärke: {formData.baseVolume}%</Label>
               </div>
               <Slider value={[formData.baseVolume]} onValueChange={([v]) => update('baseVolume', v)} />
             </div>
-            <div className="flex items-center justify-between">
-              <Label>Lautstärke-Rampe</Label>
-              <Switch checked={formData.volumeRampEnabled} onCheckedChange={v => update('volumeRampEnabled', v)} />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Aktiv</Label>
+                <Switch checked={formData.isActive} onCheckedChange={v => update('isActive', v)} />
+              </div>
             </div>
-            <div className="flex items-center justify-between">
-              <Label>Wöchentlich wiederholen</Label>
-              <Switch checked={formData.repeatWeekly} onCheckedChange={v => update('repeatWeekly', v)} />
-            </div>
-            <div className="flex items-center justify-between">
-              <Label>Aktiv</Label>
-              <Switch checked={formData.isActive} onCheckedChange={v => update('isActive', v)} />
-            </div>
-            <div className="flex gap-2 pt-2">
-              {editBlock && (
-                <Button variant="destructive" size="sm" onClick={() => { deleteMutation.mutate(editBlock.id); setShowForm(false); }}>
-                  Löschen
-                </Button>
-              )}
-              <Button variant="outline" className="flex-1" onClick={() => setShowForm(false)}>Abbrechen</Button>
-              <Button className="flex-1 bg-primary hover:bg-primary/90" onClick={() => saveMutation.mutate(formData)} disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? 'Speichern...' : 'Speichern'}
+          </div>
+          <div className="flex gap-2 pt-4 border-t border-border">
+            {editBlock && (
+              <Button variant="destructive" size="sm" onClick={() => { deleteMutation.mutate(editBlock.id); setShowForm(false); }}>
+                Löschen
               </Button>
-            </div>
+            )}
+            <Button variant="outline" className="flex-1" onClick={() => setShowForm(false)}>Abbrechen</Button>
+            <Button className="flex-1 bg-primary hover:bg-primary/90" onClick={() => saveMutation.mutate(formData)} disabled={saveMutation.isPending || !formData.zoneId}>
+              {saveMutation.isPending ? 'Speichern...' : 'Speichern'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
