@@ -10,11 +10,7 @@ Deno.serve(async (req) => {
   const body = await req.json();
   const { action, code, redirectUri, refreshToken, providerId, scopes } = body;
 
-  // getAuthUrl and exchange don't require user auth (public OAuth flow)
-  if (action !== 'getAuthUrl' && action !== 'exchange') {
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  // No user auth required - all actions use asServiceRole for entity operations
 
   // Build auth header
   const authHeader = 'Basic ' + btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);

@@ -9,8 +9,6 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON' }, { status: 400 }); }
   const { providerId } = body;
 
-  const user = await base44.auth.me();
-  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   if (!providerId) return Response.json({ error: 'Missing providerId' }, { status: 400 });
 
   // Load stored access token
