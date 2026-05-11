@@ -5,12 +5,26 @@ const CLIENT_SECRET = Deno.env.get('SPOTIFY_CLIENT_SECRET');
 const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
 
 Deno.serve(async (req) => {
-  const base44 = createClientFromRequest(req);
-
-  const body = await req.json();
+  let body;
+  try {
+    body = await req.json();
+  } catch (e) {
+    return Response.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
   const { action, code, redirectUri, refreshToken, providerId, scopes } = body;
 
-  // No user auth required - all actions use asServiceRole for entity operations
+  let base44;
+  try {
+    base44 = createClientFromRequest(req);
+  } catch (e) {
+    console.error('Failed to create base44 client:', e.message);
+    // For auth actions that don't write, we can proceed without auth
+    if (action === 'getAuthUrl') {
+      // This action doesn't need base44 client
+    } else {
+      return Response.json({ error: 'Authentication failed' }, { status: 401 });
+    }
+  }
 
   // Build auth header
   const authHeader = 'Basic ' + btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
@@ -18,6 +32,7 @@ Deno.serve(async (req) => {
   // ── GET AUTH URL (frontend doesn't need client_id) ───────────────────────────
   if (action === 'getAuthUrl') {
     if (!redirectUri || !providerId) return Response.json({ error: 'Missing redirectUri or providerId' }, { status: 400 });
+    if (!CLIENT_ID) return Response.json({ error: 'Client ID not configured' }, { status: 500 });
     const scopeStr = scopes || [
       'user-read-private', 'user-read-email',
       'user-read-playback-state', 'user-modify-playback-state',

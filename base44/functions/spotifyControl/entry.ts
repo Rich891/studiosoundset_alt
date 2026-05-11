@@ -123,7 +123,14 @@ Deno.serve(async (req) => {
   // All other actions need providerId and token
   if (!providerId) return Response.json({ error: 'Missing providerId' }, { status: 400 });
 
-  const base44 = createClientFromRequest(req);
+  let base44;
+  try {
+    base44 = createClientFromRequest(req);
+  } catch (e) {
+    console.error('Failed to create base44 client:', e.message);
+    return Response.json({ error: 'Authentication failed' }, { status: 401 });
+  }
+
   let accessToken;
   try {
     accessToken = await getAccessToken(base44, providerId);
@@ -136,11 +143,15 @@ Deno.serve(async (req) => {
     try {
       return await spotifyRequest(accessToken, method, path, body);
     } catch (e) {
-      if (e.message && e.message.includes('401')) {
+      if (e.message && (e.message.includes('401') || e.message.includes('The access token expired'))) {
+        console.log('Token expired, trying refresh...');
         const newToken = await tryRefreshToken(base44, providerId);
         if (newToken) {
+          console.log('Token refreshed successfully');
           accessToken = newToken;
           return await spotifyRequest(accessToken, method, path, body);
+        } else {
+          console.log('Token refresh failed');
         }
       }
       throw e;

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Plus, Calendar as CalendarIcon, Trash2, Edit, Clock } from 'lucide-react';
+import { Plus, Calendar as CalendarIcon, Trash2, Edit, Clock, GripVertical } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import PageHeader from '@/components/ui/PageHeader';
 import { toast } from 'sonner';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 const DAYS = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
 const DAYS_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
@@ -82,6 +83,25 @@ export default function Calendar() {
 
   const blocksByDay = DAYS.map((_, i) => blocks.filter(b => b.dayOfWeek === i));
 
+  const handleDragEnd = async (result) => {
+    const { source, destination, draggableId } = result;
+    if (!destination) return;
+
+    const fromDay = parseInt(source.droppableId);
+    const toDay = parseInt(destination.droppableId);
+    const blockId = draggableId;
+
+    if (fromDay === toDay && source.index === destination.index) return;
+
+    try {
+      await base44.entities.ScheduleBlock.update(blockId, { dayOfWeek: toDay });
+      queryClient.invalidateQueries({ queryKey: ['scheduleBlocks'] });
+      toast.success('Block verschoben!');
+    } catch (e) {
+      toast.error('Fehler beim Verschieben: ' + e.message);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       <PageHeader
@@ -108,36 +128,66 @@ export default function Calendar() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
-          {DAYS.map((day, dayIdx) => (
-            <div key={dayIdx} className="glass-card rounded-xl overflow-hidden">
-              <div className="px-3 py-2 border-b border-border">
-                <p className="text-xs font-bold text-primary">{DAYS_SHORT[dayIdx]}</p>
-                <p className="text-xs text-muted-foreground">{day}</p>
-              </div>
-              <div className="p-2 space-y-2 min-h-24">
-                {blocksByDay[dayIdx].map(block => {
-                  const zone = zones.find(z => z.id === block.zoneId);
-                  return (
-                    <div
-                      key={block.id}
-                      className="p-2 rounded-lg text-xs cursor-pointer hover:opacity-80 transition-opacity"
-                      style={{ background: `${zone?.color || '#6366f1'}20`, borderLeft: `3px solid ${zone?.color || '#6366f1'}` }}
-                      onClick={() => openEdit(block)}
-                    >
-                      <p className="font-medium truncate">{block.title || zone?.name || 'Block'}</p>
-                      <p className="text-muted-foreground">{block.startTime}–{block.endTime}</p>
-                      <div className="flex items-center gap-1 mt-1">
-                        <span className="text-muted-foreground">🔊 {block.baseVolume}%</span>
-                        {!block.isActive && <span className="text-orange-400">inaktiv</span>}
-                      </div>
+        <DragDropContext onDragEnd={handleDragEnd}>
+          <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
+            {DAYS.map((day, dayIdx) => (
+              <Droppable key={dayIdx} droppableId={String(dayIdx)}>
+                {(provided, snapshot) => (
+                  <div
+                    {...provided.droppableProps}
+                    ref={provided.innerRef}
+                    className={`glass-card rounded-xl overflow-hidden transition-colors ${
+                      snapshot.isDraggingOver ? 'bg-primary/10 border-primary/50' : ''
+                    }`}
+                  >
+                    <div className="px-3 py-2 border-b border-border">
+                      <p className="text-xs font-bold text-primary">{DAYS_SHORT[dayIdx]}</p>
+                      <p className="text-xs text-muted-foreground">{day}</p>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
+                    <div className="p-2 space-y-2 min-h-24">
+                      {blocksByDay[dayIdx].map((block, index) => {
+                        const zone = zones.find(z => z.id === block.zoneId);
+                        return (
+                          <Draggable key={block.id} draggableId={block.id} index={index}>
+                            {(provided, snapshot) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                className={`p-2 rounded-lg text-xs cursor-move hover:opacity-80 transition-all group relative ${
+                                  snapshot.isDragging ? 'shadow-lg scale-105' : ''
+                                }`}
+                                style={{
+                                  background: `${zone?.color || '#6366f1'}20`,
+                                  borderLeft: `3px solid ${zone?.color || '#6366f1'}`,
+                                  ...provided.draggableProps.style,
+                                }}
+                              >
+                                <div className="flex items-start gap-2">
+                                  <div {...provided.dragHandleProps} className="mt-0.5 flex-shrink-0">
+                                    <GripVertical className="w-3 h-3 text-muted-foreground/50" />
+                                  </div>
+                                  <div className="flex-1 min-w-0" onClick={() => openEdit(block)}>
+                                    <p className="font-medium truncate">{block.title || zone?.name || 'Block'}</p>
+                                    <p className="text-muted-foreground">{block.startTime}–{block.endTime}</p>
+                                    <div className="flex items-center gap-1 mt-1">
+                                      <span className="text-muted-foreground">🔊 {block.baseVolume}%</span>
+                                      {!block.isActive && <span className="text-orange-400">inaktiv</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </Draggable>
+                        );
+                      })}
+                      {provided.placeholder}
+                    </div>
+                  </div>
+                )}
+              </Droppable>
+            ))}
+          </div>
+        </DragDropContext>
       )}
 
       <Dialog open={showForm} onOpenChange={setShowForm}>

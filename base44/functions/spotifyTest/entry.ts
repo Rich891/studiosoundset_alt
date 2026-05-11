@@ -3,23 +3,39 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const SPOTIFY_API = 'https://api.spotify.com/v1';
 
 Deno.serve(async (req) => {
-  const base44 = createClientFromRequest(req);
-
   let body;
   try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON' }, { status: 400 }); }
   const { providerId } = body;
 
   if (!providerId) return Response.json({ error: 'Missing providerId' }, { status: 400 });
 
+  let base44;
+  try {
+    base44 = createClientFromRequest(req);
+  } catch (e) {
+    console.error('Failed to create base44 client:', e.message);
+    return Response.json({ error: 'Authentication failed - create base44 client failed' }, { status: 401 });
+  }
+
   // Load stored access token
   const tokenKey = `spotify_access_token_${providerId}`;
-  const settings = await base44.asServiceRole.entities.AppSetting.filter({ key: tokenKey });
+  let settings = [];
+  try {
+    settings = await base44.asServiceRole.entities.AppSetting.filter({ key: tokenKey });
+  } catch (e) {
+    console.error('Error fetching AppSetting:', e);
+    // Silently fail - token not found
+  }
 
   if (!settings.length) {
-    await base44.asServiceRole.entities.Provider.update(providerId, {
-      connectionStatus: 'disconnected',
-      lastConnectionTestAt: new Date().toISOString(),
-    });
+    try {
+      await base44.asServiceRole.entities.Provider.update(providerId, {
+        connectionStatus: 'disconnected',
+        lastConnectionTestAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error('Failed to update provider status:', e);
+    }
     return Response.json({ success: false, status: 'disconnected', reason: 'No token stored' });
   }
 
