@@ -73,8 +73,7 @@ Deno.serve(async (req) => {
     
     let accessToken = '';
     
-    // Use createClientFromRequest with asServiceRole to read stored token
-    // (works even without user auth because asServiceRole has full data access)
+    // Try to initialize base44 client (may fail without auth, but we still try asServiceRole)
     try {
       const base44 = createClientFromRequest(req);
       const tokenKey = `spotify_access_token_${providerId}`;
@@ -83,11 +82,15 @@ Deno.serve(async (req) => {
         accessToken = settings[0].value;
       }
     } catch (e) {
-      console.error('Could not read token from AppSetting:', e.message);
+      console.log('Direct auth failed:', e.message);
     }
     
+    // No fallback — must use provider token (user scope required for playlist read)
     if (!accessToken) {
-      return Response.json({ error: 'No token stored for this provider' }, { status: 401 });
+      return Response.json({ 
+        error: 'Provider-Token nicht gespeichert. Stelle sicher dass du einen Spotify-Provider mit vollständigen Berechtigungen verbunden hast.',
+        code: 'NO_PROVIDER_TOKEN'
+      }, { status: 401 });
     }
     
     try {
@@ -104,6 +107,7 @@ Deno.serve(async (req) => {
       
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
+        console.error(`Spotify API error ${res.status}:`, errData);
         return Response.json({ 
           error: `${errData?.error?.message || `HTTP ${res.status}`}`
         }, { status: res.status });
