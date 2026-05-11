@@ -10,8 +10,8 @@ Deno.serve(async (req) => {
   const body = await req.json();
   const { action, code, redirectUri, refreshToken, providerId, scopes } = body;
 
-  // exchange action doesn't require auth (called after Spotify redirect, no user token available)
-  if (action !== 'exchange') {
+  // getAuthUrl and exchange don't require user auth (public OAuth flow)
+  if (action !== 'getAuthUrl' && action !== 'exchange') {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
