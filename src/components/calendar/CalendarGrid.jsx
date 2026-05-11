@@ -155,15 +155,16 @@ export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDele
             <div className="text-xs font-semibold text-foreground mb-2 text-center">{day}</div>
             <div 
               ref={(el) => { gridRefs.current[dayIdx] = el; }}
-              className="relative border border-border/30 rounded bg-card/50 h-[570px] cursor-cell select-none"
+              className="relative border border-border/30 rounded bg-card/50 cursor-cell select-none"
+              style={{ height: `${HOURS.length * 30}px` }}
               onMouseDown={(e) => handleMouseDown(e, dayIdx)}
             >
               {/* Hour grid */}
               {HOURS.map((hour) => (
-                <div key={hour} className="h-20 border-b border-border/20 hover:bg-primary/5 transition-colors pointer-events-none">
+                <div key={hour} className="border-b border-border/20 hover:bg-primary/5 transition-colors pointer-events-none" style={{ height: '30px' }}>
                   {/* 15-min subdivisions */}
                   {[0, 15, 30, 45].map((min) => (
-                    <div key={min} className="h-5 border-b border-border/10 text-xs px-1" />
+                    <div key={min} className="border-b border-border/10 text-xs px-1" style={{ height: '7.5px' }} />
                   ))}
                 </div>
               ))}
