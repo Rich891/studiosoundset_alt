@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Radio, Volume2, Music2, Plus } from 'lucide-react';
+import { Radio, Music2, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import NowPlayingCard from '@/components/dashboard/NowPlayingCard';
+import SpotifyPlayer from '@/components/nowplaying/SpotifyPlayer';
 import PageHeader from '@/components/ui/PageHeader';
 
 export default function NowPlaying() {
@@ -16,12 +17,18 @@ export default function NowPlaying() {
     queryKey: ['devices'],
     queryFn: () => base44.entities.Device.filter({ isDeleted: false }),
   });
+  const { data: providers = [] } = useQuery({
+    queryKey: ['providers'],
+    queryFn: () => base44.entities.Provider.list(),
+  });
+
+  const spotifyProviders = providers.filter(p => p.type === 'spotify_demo' && p.accessTokenStored);
 
   return (
     <div className="p-6 space-y-6">
       <PageHeader
         title="Now Playing"
-        subtitle="Aktuelle Wiedergabe in allen Studiozonen"
+        subtitle="Aktuelle Wiedergabe und Spotify-Steuerung"
         actions={
           <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 rounded-full">
             <Radio className="w-3.5 h-3.5 text-green-400" />
@@ -30,6 +37,16 @@ export default function NowPlaying() {
         }
       />
 
+      {/* Spotify Live Controls */}
+      {spotifyProviders.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {spotifyProviders.map(provider => (
+            <SpotifyPlayer key={provider.id} provider={provider} />
+          ))}
+        </div>
+      )}
+
+      {/* Zone Cards */}
       {zones.length === 0 ? (
         <Card className="glass-card border-dashed border-primary/30">
           <CardContent className="p-12 text-center">
