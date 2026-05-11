@@ -42,12 +42,13 @@ async function tryRefreshToken(base44, providerId) {
 }
 
 async function spotifyRequest(accessToken, method, path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
   const res = await fetch(`${SPOTIFY_API}${path}`, {
     method,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
   if (res.status === 204) return { ok: true };
@@ -107,7 +108,8 @@ Deno.serve(async (req) => {
     if (action === 'getPlaylistInfo') {
       const { playlistId } = body;
       if (!playlistId) return Response.json({ error: 'Missing playlistId' }, { status: 400 });
-      const data = await spotifyRequestWithRefresh('GET', `/playlists/${playlistId}`);
+      // Spotify allows public playlist info without authentication
+      const data = await spotifyRequest('', 'GET', `/playlists/${playlistId}`, null);
       return Response.json({ success: true, playlist: data });
     }
 
