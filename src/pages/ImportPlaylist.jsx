@@ -25,6 +25,7 @@ export default function ImportPlaylist() {
   const [playlistUrl, setPlaylistUrl] = useState('');
   const [energyLevel, setEnergyLevel] = useState('medium');
   const [mood, setMood] = useState('');
+  const [customName, setCustomName] = useState('');
   const [fetchedPlaylist, setFetchedPlaylist] = useState(null);
   const [fetching, setFetching] = useState(false);
   const navigate = useNavigate();
@@ -59,10 +60,35 @@ export default function ImportPlaylist() {
         setFetchedPlaylist(res.data.playlist);
         toast.success('Playlist gefunden!');
       } else {
-        toast.error('Playlist nicht gefunden. Ist die URL korrekt und der Provider verbunden?');
+        // Fallback: create a minimal placeholder so the user can still import
+        setFetchedPlaylist({
+          id: playlistId,
+          name: `Playlist (${playlistId.slice(0, 8)}...)`,
+          uri: `spotify:playlist:${playlistId}`,
+          external_urls: { spotify: `https://open.spotify.com/playlist/${playlistId}` },
+          tracks: { total: 0 },
+          images: [],
+          owner: { display_name: '' },
+          description: '',
+          _isFallback: true,
+        });
+        toast('Spotify-Metadaten konnten nicht geladen werden. Du kannst die Playlist trotzdem importieren.', { icon: '⚠️' });
       }
     } catch (e) {
-      toast.error('Fehler beim Laden: ' + e.message);
+      // Same fallback on error
+      const playlistId2 = extractSpotifyPlaylistId(playlistUrl);
+      setFetchedPlaylist({
+        id: playlistId2,
+        name: `Playlist (${playlistId2?.slice(0, 8)}...)`,
+        uri: `spotify:playlist:${playlistId2}`,
+        external_urls: { spotify: `https://open.spotify.com/playlist/${playlistId2}` },
+        tracks: { total: 0 },
+        images: [],
+        owner: { display_name: '' },
+        description: '',
+        _isFallback: true,
+      });
+      toast('Metadaten konnten nicht geladen werden. Du kannst trotzdem importieren.', { icon: '⚠️' });
     } finally {
       setFetching(false);
     }
@@ -71,7 +97,7 @@ export default function ImportPlaylist() {
   const importMutation = useMutation({
     mutationFn: async () => {
       const playlistId = extractSpotifyPlaylistId(playlistUrl);
-      const name = fetchedPlaylist?.name || 'Importierte Playlist';
+      const name = (fetchedPlaylist?._isFallback ? customName : fetchedPlaylist?.name) || customName || 'Importierte Playlist';
       const coverUrl = fetchedPlaylist?.images?.[0]?.url || '';
       const totalTracks = fetchedPlaylist?.tracks?.total || 0;
       const providerPlaylistUri = fetchedPlaylist?.uri || `spotify:playlist:${playlistId}`;
@@ -153,18 +179,31 @@ export default function ImportPlaylist() {
 
           {/* Fetched Playlist Preview */}
           {fetchedPlaylist && (
-            <div className="flex items-center gap-4 p-3 rounded-xl bg-green-500/5 border border-green-500/20">
-              {fetchedPlaylist.images?.[0]?.url && (
-                <img src={fetchedPlaylist.images[0].url} alt={fetchedPlaylist.name} className="w-16 h-16 rounded-lg object-cover" />
+            <div className={`flex items-center gap-4 p-3 rounded-xl border ${fetchedPlaylist._isFallback ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-green-500/5 border-green-500/20'}`}>
+              {fetchedPlaylist.images?.[0]?.url ? (
+                <img src={fetchedPlaylist.images[0].url} alt={fetchedPlaylist.name} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
+              ) : (
+                <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                  <Music2 className="w-7 h-7 text-muted-foreground" />
+                </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-foreground truncate">{fetchedPlaylist.name}</p>
-                <p className="text-xs text-muted-foreground">{fetchedPlaylist.tracks?.total} Songs · {fetchedPlaylist.owner?.display_name}</p>
+                {fetchedPlaylist._isFallback ? (
+                  <Input
+                    value={customName}
+                    onChange={e => setCustomName(e.target.value)}
+                    className="bg-muted/50 text-sm h-8"
+                    placeholder="Playlist-Name eingeben..."
+                  />
+                ) : (
+                  <p className="font-semibold text-foreground truncate">{fetchedPlaylist.name}</p>
+                )}
+                <p className="text-xs text-muted-foreground mt-0.5">{fetchedPlaylist.tracks?.total || '?'} Songs · {fetchedPlaylist.owner?.display_name || '—'}</p>
                 {fetchedPlaylist.description && (
                   <p className="text-xs text-muted-foreground truncate mt-0.5">{fetchedPlaylist.description}</p>
                 )}
               </div>
-              <Check className="w-5 h-5 text-green-400 flex-shrink-0" />
+              <Check className={`w-5 h-5 flex-shrink-0 ${fetchedPlaylist._isFallback ? 'text-yellow-400' : 'text-green-400'}`} />
             </div>
           )}
 
@@ -191,7 +230,7 @@ export default function ImportPlaylist() {
           <Button
             className="w-full bg-primary hover:bg-primary/90"
             onClick={() => importMutation.mutate()}
-            disabled={!selectedProvider || !playlistUrl || !fetchedPlaylist || importMutation.isPending}
+            disabled={!selectedProvider || !playlistUrl || !fetchedPlaylist || (fetchedPlaylist?._isFallback && !customName) || importMutation.isPending}
           >
             <Download className="w-4 h-4 mr-2" />
             {importMutation.isPending ? 'Importieren...' : 'Playlist importieren'}

@@ -13,6 +13,7 @@ export default function SpotifyPlayer({ provider }) {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [isAuthed, setIsAuthed] = useState(null);
 
   const invoke = useCallback(async (action, extra = {}) => {
     return base44.functions.invoke('spotifyControl', { providerId: provider.id, action, ...extra });
@@ -39,9 +40,16 @@ export default function SpotifyPlayer({ provider }) {
   }, [invoke]);
 
   useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 30000);
-    return () => clearInterval(interval);
+    base44.auth.isAuthenticated().then((authed) => {
+      setIsAuthed(authed);
+      if (authed) {
+        refresh();
+        const interval = setInterval(refresh, 30000);
+        return () => clearInterval(interval);
+      } else {
+        setLoading(false);
+      }
+    });
   }, [refresh]);
 
   const handleAction = async (action, extra = {}) => {
@@ -83,6 +91,15 @@ export default function SpotifyPlayer({ provider }) {
   const progressMs = playback?.progress_ms || 0;
   const durationMs = track?.duration_ms || 1;
   const progressPct = Math.round((progressMs / durationMs) * 100);
+
+  if (isAuthed === false) {
+    return (
+      <div className="glass-card rounded-2xl p-6 flex items-center gap-3">
+        <AlertCircle className="w-5 h-5 text-yellow-400" />
+        <p className="text-sm text-muted-foreground">Bitte einloggen um den Player zu nutzen.</p>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

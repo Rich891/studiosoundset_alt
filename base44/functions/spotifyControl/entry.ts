@@ -107,7 +107,7 @@ Deno.serve(async (req) => {
     if (action === 'getPlaylistInfo') {
       const { playlistId } = body;
       if (!playlistId) return Response.json({ error: 'Missing playlistId' }, { status: 400 });
-      const data = await spotifyRequestWithRefresh('GET', `/playlists/${playlistId}?fields=id,name,description,images,owner,tracks.total,uri,external_urls`);
+      const data = await spotifyRequestWithRefresh('GET', `/playlists/${playlistId}`);
       return Response.json({ success: true, playlist: data });
     }
 
