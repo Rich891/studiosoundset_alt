@@ -6,11 +6,15 @@ const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
 
 Deno.serve(async (req) => {
   const base44 = createClientFromRequest(req);
-  const user = await base44.auth.me();
-  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json();
   const { action, code, redirectUri, refreshToken, providerId, scopes } = body;
+
+  // exchange action doesn't require auth (called after Spotify redirect, no user token available)
+  if (action !== 'exchange') {
+    const user = await base44.auth.me();
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   // Build auth header
   const authHeader = 'Basic ' + btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
