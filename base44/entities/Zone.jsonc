@@ -2,9 +2,6 @@
   "name": "Zone",
   "type": "object",
   "properties": {
-    "studioId": {
-      "type": "string"
-    },
     "name": {
       "type": "string"
     },
@@ -14,6 +11,23 @@
     "color": {
       "type": "string",
       "default": "#6366f1"
+    },
+    "deviceType": {
+      "type": "string",
+      "enum": [
+        "ipad",
+        "android_tablet",
+        "smartphone",
+        "desktop",
+        "other"
+      ],
+      "default": "other"
+    },
+    "spotifyAccountId": {
+      "type": "string"
+    },
+    "targetDeviceId": {
+      "type": "string"
     },
     "defaultVolume": {
       "type": "number",
@@ -27,7 +41,23 @@
       "type": "number",
       "default": 100
     },
-    "assignedDeviceId": {
+    "currentStatus": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "no_account",
+        "no_device",
+        "device_offline",
+        "token_expired",
+        "error",
+        "untested"
+      ],
+      "default": "untested"
+    },
+    "lastTestAt": {
+      "type": "string"
+    },
+    "lastError": {
       "type": "string"
     },
     "isActive": {

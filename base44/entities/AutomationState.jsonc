@@ -5,19 +5,25 @@
     "zoneId": {
       "type": "string"
     },
-    "deviceId": {
-      "type": "string"
-    },
     "lastAppliedPlaylistId": {
       "type": "string"
     },
     "lastAppliedVolume": {
       "type": "number"
     },
-    "lastAppliedAt": {
+    "lastScheduleBlockId": {
       "type": "string"
     },
-    "lastScheduleBlockId": {
+    "lastCommandId": {
+      "type": "string"
+    },
+    "lastSuccessAt": {
+      "type": "string"
+    },
+    "lastErrorAt": {
+      "type": "string"
+    },
+    "lastErrorMessage": {
       "type": "string"
     },
     "schedulerStatus": {
@@ -29,9 +35,6 @@
         "idle"
       ],
       "default": "idle"
-    },
-    "lastError": {
-      "type": "string"
     }
   },
   "required": [

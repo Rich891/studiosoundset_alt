@@ -1,0 +1,67 @@
+{
+  "name": "SpotifyDevice",
+  "type": "object",
+  "properties": {
+    "spotifyAccountId": {
+      "type": "string"
+    },
+    "zoneId": {
+      "type": "string"
+    },
+    "providerDeviceId": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": false
+    },
+    "isVisible": {
+      "type": "boolean",
+      "default": false
+    },
+    "isSelectedTarget": {
+      "type": "boolean",
+      "default": false
+    },
+    "isControllable": {
+      "type": "boolean",
+      "default": false
+    },
+    "volumeControllable": {
+      "type": "boolean",
+      "default": false
+    },
+    "currentVolume": {
+      "type": "number"
+    },
+    "lastSeenAt": {
+      "type": "string"
+    },
+    "lastTestAt": {
+      "type": "string"
+    },
+    "lastTestStatus": {
+      "type": "string",
+      "enum": [
+        "success",
+        "failed",
+        "partial",
+        "untested"
+      ],
+      "default": "untested"
+    },
+    "lastError": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "spotifyAccountId",
+    "name"
+  ]
+}

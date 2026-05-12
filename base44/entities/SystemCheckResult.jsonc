@@ -1,0 +1,48 @@
+{
+  "name": "SystemCheckResult",
+  "type": "object",
+  "properties": {
+    "category": {
+      "type": "string",
+      "enum": [
+        "global",
+        "account",
+        "zone",
+        "scheduler"
+      ]
+    },
+    "zoneId": {
+      "type": "string"
+    },
+    "spotifyAccountId": {
+      "type": "string"
+    },
+    "testName": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "warning",
+        "error",
+        "running",
+        "untested"
+      ],
+      "default": "untested"
+    },
+    "technicalMessage": {
+      "type": "string"
+    },
+    "humanMessage": {
+      "type": "string"
+    },
+    "suggestedFix": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "testName",
+    "category"
+  ]
+}

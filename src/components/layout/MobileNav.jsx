@@ -1,40 +1,57 @@
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Radio, Cpu, Music2, MoreHorizontal } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Menu, X, LayoutDashboard, Music2, MapPin, Radio, Calendar, Settings, Activity, Zap } from 'lucide-react';
 
-const mobileNavItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
-  { icon: Radio, label: 'Playing', path: '/now-playing' },
-  { icon: Calendar, label: 'Kalender', path: '/calendar' },
-  { icon: Music2, label: 'Playlists', path: '/playlists' },
-  { icon: Cpu, label: 'Mehr', path: '/devices' },
+const NAV = [
+  { path: '/dashboard',        label: 'Dashboard',         icon: LayoutDashboard },
+  { path: '/spotify-accounts', label: 'Spotify Accounts',  icon: Music2 },
+  { path: '/zones',            label: 'Zonen',             icon: MapPin },
+  { path: '/now-playing',      label: 'Now Playing',       icon: Radio },
+  { path: '/playlists',        label: 'Playlists',         icon: Music2 },
+  { path: '/calendar',         label: 'Zeitplaner',        icon: Calendar },
+  { path: '/system-check',     label: 'System Check',      icon: Activity },
+  { path: '/settings',         label: 'Einstellungen',     icon: Settings },
 ];
 
 export default function MobileNav() {
-  const location = useLocation();
+  const [open, setOpen] = useState(false);
+  const { pathname } = useLocation();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border z-50 md:hidden">
-      <ul className="flex items-center justify-around px-2 py-2">
-        {mobileNavItems.map((item) => {
-          const active = location.pathname === item.path || 
-            (item.path !== '/' && location.pathname.startsWith(item.path));
-          return (
-            <li key={item.path}>
-              <Link
-                to={item.path}
-                className={cn(
-                  'flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-all',
-                  active ? 'text-primary' : 'text-muted-foreground'
-                )}
-              >
-                <item.icon className="w-5 h-5" />
-                <span className="text-xs font-medium">{item.label}</span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+    <div className="lg:hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/30 bg-card/50 backdrop-blur-sm">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Zap className="w-4 h-4 text-primary" />
+          </div>
+          <span className="font-black text-sm gradient-text">StudioSoundSet</span>
+        </div>
+        <button onClick={() => setOpen(!open)} className="p-2 rounded-xl hover:bg-muted/20 transition-colors">
+          {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
+      </div>
+
+      {open && (
+        <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm pt-16">
+          <div className="absolute top-3 right-4">
+            <button onClick={() => setOpen(false)} className="p-2 rounded-xl hover:bg-muted/20"><X className="w-5 h-5" /></button>
+          </div>
+          <nav className="p-4 space-y-1">
+            {NAV.map(item => {
+              const Icon = item.icon;
+              const active = pathname === item.path;
+              return (
+                <Link key={item.path} to={item.path} onClick={() => setOpen(false)}>
+                  <div className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${active ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted/20'}`}>
+                    <Icon className="w-5 h-5" />
+                    {item.label}
+                  </div>
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+      )}
+    </div>
   );
 }

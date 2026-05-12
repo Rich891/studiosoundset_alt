@@ -1,0 +1,60 @@
+{
+  "name": "Command",
+  "type": "object",
+  "properties": {
+    "zoneId": {
+      "type": "string"
+    },
+    "spotifyAccountId": {
+      "type": "string"
+    },
+    "targetDeviceId": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "LOAD_DEVICES",
+        "TRANSFER_PLAYBACK",
+        "PLAY_PLAYLIST",
+        "PAUSE",
+        "RESUME",
+        "SET_VOLUME",
+        "GET_NOW_PLAYING",
+        "GET_PLAYBACK_STATE",
+        "TEST_DEVICE",
+        "SYNC_PLAYLISTS",
+        "IMPORT_TRACKS"
+      ]
+    },
+    "payload": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "running",
+        "success",
+        "failed",
+        "timeout"
+      ],
+      "default": "pending"
+    },
+    "technicalMessage": {
+      "type": "string"
+    },
+    "humanMessage": {
+      "type": "string"
+    },
+    "suggestedFix": {
+      "type": "string"
+    },
+    "completedAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "type"
+  ]
+}

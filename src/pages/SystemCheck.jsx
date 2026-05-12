@@ -1,248 +1,228 @@
 import { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { CheckCircle2, AlertCircle, Clock, Zap } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { motion } from 'framer-motion';
+import { Activity, CheckCircle2, XCircle, AlertCircle, RefreshCw, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import PageHeader from '@/components/ui/PageHeader';
-import { calculateTargetVolume } from '@/lib/volumeRamp';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
+const invoke = (fn, payload) => base44.functions.invoke(fn, payload);
+
+const StatusIcon = ({ status }) => {
+  if (status === 'ok') return <CheckCircle2 className="w-5 h-5 text-green-400" />;
+  if (status === 'error') return <XCircle className="w-5 h-5 text-red-400" />;
+  if (status === 'warning') return <AlertCircle className="w-5 h-5 text-yellow-400" />;
+  if (status === 'running') return <RefreshCw className="w-5 h-5 text-primary animate-spin" />;
+  return <div className="w-5 h-5 rounded-full border-2 border-border" />;
+};
+
+function TestRow({ test, onAction }) {
+  return (
+    <div className="flex items-start gap-3 py-3 border-b border-border/20 last:border-0">
+      <StatusIcon status={test.status} />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold">{test.testName}</p>
+        {test.humanMessage && <p className="text-xs text-muted-foreground mt-0.5">{test.humanMessage}</p>}
+        {test.technicalMessage && <p className="text-xs text-muted-foreground/60 font-mono mt-0.5 truncate">{test.technicalMessage}</p>}
+        {test.suggestedFix && (
+          <div className="flex items-center gap-1.5 mt-1.5">
+            <ChevronRight className="w-3 h-3 text-yellow-400 flex-shrink-0" />
+            <p className="text-xs text-yellow-300">{test.suggestedFix}</p>
+          </div>
+        )}
+      </div>
+      {test.actionLink && (
+        <Link to={test.actionLink}>
+          <Button size="sm" variant="outline" className="h-7 text-xs">{test.actionLabel || 'Beheben'}</Button>
+        </Link>
+      )}
+    </div>
+  );
+}
+
 export default function SystemCheck() {
-  const [testBlock, setTestBlock] = useState(null);
-  const [testHour, setTestHour] = useState('12');
+  const [running, setRunning] = useState(false);
+  const [results, setResults] = useState([]);
+  const queryClient = useQueryClient();
 
-  const { data: providers = [] } = useQuery({
-    queryKey: ['providers'],
-    queryFn: () => base44.entities.Provider.list(),
-  });
-  const { data: devices = [] } = useQuery({
-    queryKey: ['devices'],
-    queryFn: () => base44.entities.Device.list(),
-  });
-  const { data: zones = [] } = useQuery({
-    queryKey: ['zones'],
-    queryFn: () => base44.entities.Zone.list(),
-  });
-  const { data: blocks = [] } = useQuery({
-    queryKey: ['scheduleBlocks'],
-    queryFn: () => base44.entities.ScheduleBlock.list(),
-  });
+  const { data: accounts = [] } = useQuery({ queryKey: ['spotifyAccounts'], queryFn: () => base44.entities.SpotifyAccount.list() });
+  const { data: zones = [] } = useQuery({ queryKey: ['zones'], queryFn: () => base44.entities.Zone.list() });
+  const { data: playlists = [] } = useQuery({ queryKey: ['playlists'], queryFn: () => base44.entities.Playlist.list() });
 
-  const testMutation = useMutation({
-    mutationFn: async (providerId) => {
-      const response = await base44.functions.invoke('spotifyTest', { providerId });
-      return response.data;
-    },
-    onSuccess: (data) => {
-      if (data.success) {
-        toast.success('Provider antwortet korrekt!');
-      } else {
-        toast.error(`Status: ${data.status}`);
+  const runCheck = async () => {
+    setRunning(true);
+    const checks = [];
+
+    const addCheck = (testName, category, status, humanMessage, suggestedFix = '', technicalMessage = '', actionLink = '', actionLabel = '') => {
+      checks.push({ testName, category, status, humanMessage, suggestedFix, technicalMessage, actionLink, actionLabel });
+      setResults([...checks]);
+    };
+
+    // Global checks
+    addCheck('Spotify Client ID', 'global', 'running', 'Prüfe...');
+    // We can't directly check env vars from frontend, so check indirectly
+    if (accounts.length === 0) {
+      checks[checks.length - 1] = { testName: 'Spotify Accounts', category: 'global', status: 'warning', humanMessage: 'Noch keine Spotify Accounts angelegt.', suggestedFix: 'Lege einen Account pro Zone an.', actionLink: '/spotify-accounts', actionLabel: 'Accounts anlegen' };
+    } else {
+      checks[checks.length - 1] = { testName: 'Spotify Accounts', category: 'global', status: 'ok', humanMessage: `${accounts.length} Account(s) angelegt.` };
+    }
+
+    // Per Account
+    for (const acc of accounts) {
+      addCheck(`Account: ${acc.displayName}`, 'account', 'running', 'Token wird geprüft...');
+      if (acc.authStatus !== 'connected') {
+        checks[checks.length - 1] = {
+          testName: `Account: ${acc.displayName}`,
+          category: 'account', status: 'error',
+          humanMessage: `Nicht verbunden (Status: ${acc.authStatus}).`,
+          suggestedFix: 'Verbinde den Account mit Spotify OAuth.',
+          actionLink: '/spotify-accounts', actionLabel: 'Verbinden'
+        };
+        continue;
       }
-    },
-    onError: (error) => {
-      toast.error('Fehler: ' + error.message);
-    },
-  });
+      if (acc.tokenStatus === 'expired') {
+        checks[checks.length - 1] = {
+          testName: `Account: ${acc.displayName}`,
+          category: 'account', status: 'error',
+          humanMessage: 'Token abgelaufen.',
+          suggestedFix: 'Erneut verbinden um Token zu erneuern.',
+          actionLink: '/spotify-accounts', actionLabel: 'Erneuern'
+        };
+        continue;
+      }
+      // Test API
+      try {
+        const res = await invoke('spotifyAccountControl', { action: 'getDevices', accountId: acc.id });
+        const deviceCount = res.data?.devices?.length || 0;
+        checks[checks.length - 1] = {
+          testName: `Account: ${acc.displayName}`,
+          category: 'account', status: deviceCount > 0 ? 'ok' : 'warning',
+          humanMessage: deviceCount > 0
+            ? `Token gültig. ${deviceCount} Gerät(e) gefunden.`
+            : 'Token gültig, aber keine Geräte sichtbar. Öffne Spotify auf dem Zielgerät.',
+          suggestedFix: deviceCount === 0 ? 'Starte Spotify auf dem Gerät.' : '',
+        };
+      } catch (e) {
+        checks[checks.length - 1] = {
+          testName: `Account: ${acc.displayName}`,
+          category: 'account', status: 'error',
+          humanMessage: 'API-Test fehlgeschlagen.',
+          technicalMessage: e.message,
+          suggestedFix: 'Token möglicherweise ungültig. Account erneut verbinden.',
+          actionLink: '/spotify-accounts', actionLabel: 'Neu verbinden'
+        };
+      }
+      setResults([...checks]);
+    }
 
-  const connectedProviders = providers.filter(p => p.connectionStatus === 'connected');
-  const onlineDevices = devices.filter(d => d.status === 'online');
-  const activeZones = zones.filter(z => z.isActive);
-  const ramptBlocks = blocks.filter(b => b.volumeRampEnabled && b.isActive);
+    // Zone checks
+    for (const zone of zones) {
+      const account = accounts.find(a => a.id === zone.spotifyAccountId);
+      addCheck(`Zone: ${zone.name}`, 'zone', account ? (account.authStatus === 'connected' ? 'ok' : 'warning') : 'error',
+        account
+          ? (account.authStatus === 'connected' ? `Account "${account.displayName}" verbunden.` : `Account nicht verbunden.`)
+          : 'Kein Spotify Account zugewiesen.',
+        !account ? 'Weise dieser Zone einen Account zu.' : account.authStatus !== 'connected' ? 'Account verbinden.' : '',
+        '', '/zones', 'Zonen konfigurieren'
+      );
+      setResults([...checks]);
+    }
+
+    // Playlist checks
+    addCheck('Playlists & Tracks', 'global',
+      playlists.length === 0 ? 'warning' : playlists.some(p => p.syncStatus === 'synced') ? 'ok' : 'warning',
+      playlists.length === 0 ? 'Keine Playlists importiert.' : `${playlists.filter(p => p.syncStatus === 'synced').length} von ${playlists.length} Playlists vollständig importiert.`,
+      playlists.length === 0 ? 'Importiere Playlists unter "Playlists".' : '',
+      '', '/playlists', 'Playlists importieren'
+    );
+    setResults([...checks]);
+
+    // Base44 automation note
+    addCheck('Scheduler (Base44)', 'global', 'warning',
+      'Base44 Automationen laufen minimal alle 5 Minuten. Für "continuous" Lautstärke-Rampen ist das unzuverlässig.',
+      'Verwende "hourly", "every_30_min" oder "every_15_min" Rampen-Modus für zuverlässige Steuerung.',
+    );
+    setResults([...checks]);
+
+    setRunning(false);
+    toast.success('System Check abgeschlossen.');
+  };
+
+  const grouped = {
+    global: results.filter(r => r.category === 'global'),
+    account: results.filter(r => r.category === 'account'),
+    zone: results.filter(r => r.category === 'zone'),
+  };
+
+  const okCount = results.filter(r => r.status === 'ok').length;
+  const warnCount = results.filter(r => r.status === 'warning').length;
+  const errCount = results.filter(r => r.status === 'error').length;
 
   return (
-    <div className="p-8 space-y-8 max-w-6xl mx-auto">
-      <PageHeader
-        title="System Check"
-        subtitle="Diagnose und API-Tests"
-      />
-
-      {/* Provider Test */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-semibold">Provider Verbindung</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {providers.length === 0 ? (
-            <Card className="glass-card border-yellow-500/30 bg-yellow-500/5">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <AlertCircle className="w-6 h-6 text-yellow-400" />
-                  <h3 className="font-semibold">Keine Provider</h3>
-                </div>
-                <p className="text-sm text-muted-foreground mb-4">Bitte verbinde einen Provider.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            providers.map(provider => (
-              <Card key={provider.id} className={`glass-card ${provider.connectionStatus === 'connected' ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
-                <CardContent className="p-6 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold">{provider.name}</h3>
-                    {provider.connectionStatus === 'connected' ? (
-                      <CheckCircle2 className="w-5 h-5 text-green-400" />
-                    ) : (
-                      <AlertCircle className="w-5 h-5 text-red-400" />
-                    )}
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Status:</span>
-                      <span className="font-medium">{provider.connectionStatus}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Typ:</span>
-                      <span className="font-medium">{provider.type}</span>
-                    </div>
-                    {provider.lastConnectionTestAt && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Letzter Test:</span>
-                        <span className="font-medium text-xs">{new Date(provider.lastConnectionTestAt).toLocaleString('de-DE')}</span>
-                      </div>
-                    )}
-                  </div>
-                  <Button 
-                    size="sm" 
-                    className="w-full h-9"
-                    onClick={() => testMutation.mutate(provider.id)}
-                    disabled={testMutation.isPending}
-                  >
-                    {testMutation.isPending ? 'Testen...' : 'Verbindung testen'}
-                  </Button>
-                </CardContent>
-              </Card>
-            ))
-          )}
+    <div className="p-4 lg:p-8 space-y-6 max-w-4xl mx-auto">
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-2xl lg:text-3xl font-black flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
+              <Activity className="w-5 h-5 text-cyan-400" />
+            </div>
+            System Check
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1 ml-14">Prüft Tokens, Geräte, Playlists und Scheduler-Status.</p>
         </div>
+        <Button className="bg-primary hover:bg-primary/90 h-11 px-6 gap-2 font-semibold" onClick={runCheck} disabled={running}>
+          {running ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
+          {running ? 'Prüfe...' : 'System Check starten'}
+        </Button>
       </div>
 
-      {/* System Status */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="glass-card border-purple-500/30 bg-purple-500/5">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-muted-foreground">Provider</p>
-              {connectedProviders.length > 0 && <CheckCircle2 className="w-5 h-5 text-green-400" />}
+      {results.length > 0 && (
+        <>
+          {/* Summary */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bento-panel p-4 text-center border-green-500/20 bg-green-500/5">
+              <p className="text-2xl font-black text-green-400">{okCount}</p>
+              <p className="text-xs text-muted-foreground font-semibold mt-1">OK</p>
             </div>
-            <p className="text-3xl font-bold text-purple-400">{connectedProviders.length}/{providers.length}</p>
-            <p className="text-xs text-muted-foreground mt-2">verbunden</p>
-          </CardContent>
-        </Card>
-
-        <Card className="glass-card border-blue-500/30 bg-blue-500/5">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-muted-foreground">Geräte</p>
-              {onlineDevices.length > 0 && <CheckCircle2 className="w-5 h-5 text-green-400" />}
+            <div className="bento-panel p-4 text-center border-yellow-500/20 bg-yellow-500/5">
+              <p className="text-2xl font-black text-yellow-400">{warnCount}</p>
+              <p className="text-xs text-muted-foreground font-semibold mt-1">Warnungen</p>
             </div>
-            <p className="text-3xl font-bold text-blue-400">{onlineDevices.length}/{devices.length}</p>
-            <p className="text-xs text-muted-foreground mt-2">online</p>
-          </CardContent>
-        </Card>
-
-        <Card className="glass-card border-green-500/30 bg-green-500/5">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-muted-foreground">Zonen</p>
-              {activeZones.length > 0 && <CheckCircle2 className="w-5 h-5 text-green-400" />}
+            <div className="bento-panel p-4 text-center border-red-500/20 bg-red-500/5">
+              <p className="text-2xl font-black text-red-400">{errCount}</p>
+              <p className="text-xs text-muted-foreground font-semibold mt-1">Fehler</p>
             </div>
-            <p className="text-3xl font-bold text-green-400">{activeZones.length}</p>
-            <p className="text-xs text-muted-foreground mt-2">aktiv</p>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card className="glass-card border-orange-500/30 bg-orange-500/5">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-muted-foreground">Rampen</p>
-              {ramptBlocks.length > 0 && <CheckCircle2 className="w-5 h-5 text-green-400" />}
-            </div>
-            <p className="text-3xl font-bold text-orange-400">{ramptBlocks.length}</p>
-            <p className="text-xs text-muted-foreground mt-2">aktive</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Volume Ramp Test */}
-      {blocks.length > 0 && (
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Lautstärkerampen-Test</h2>
-          <Card className="glass-card">
-            <CardHeader>
-              <CardTitle className="text-base">Rampen-Berechnung testen</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-semibold mb-2 block">Zeitblock auswählen</label>
-                  <Select value={testBlock?.id || ''} onValueChange={(id) => setTestBlock(blocks.find(b => b.id === id))}>
-                    <SelectTrigger className="h-10"><SelectValue placeholder="Block wählen" /></SelectTrigger>
-                    <SelectContent>
-                      {blocks.filter(b => b.volumeRampEnabled).map(b => (
-                        <SelectItem key={b.id} value={b.id}>
-                          {b.title} ({b.startTime}-{b.endTime})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-sm font-semibold mb-2 block">Stunde testen</label>
-                  <Select value={testHour} onValueChange={setTestHour}>
-                    <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: 24 }, (_, i) => i).map(h => (
-                        <SelectItem key={h} value={String(h)}>
-                          {String(h).padStart(2, '0')}:00 Uhr
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+          {/* Results */}
+          {[['Global', grouped.global], ['Spotify Accounts', grouped.account], ['Zonen', grouped.zone]].map(([title, items]) =>
+            items.length > 0 ? (
+              <div key={title} className="bento-panel p-5">
+                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">{title}</p>
+                {items.map((t, i) => <TestRow key={i} test={t} />)}
               </div>
+            ) : null
+          )}
+        </>
+      )}
 
-              {testBlock && (
-                <div className="p-4 bg-muted/30 rounded-lg space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-primary/10 rounded">
-                    <span className="font-semibold">{testBlock.title}</span>
-                    <span className="text-sm text-muted-foreground">{testBlock.startTime}–{testBlock.endTime}</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Start-Lautstärke</p>
-                      <p className="text-2xl font-bold text-green-400">{testBlock.startVolume}%</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">End-Lautstärke</p>
-                      <p className="text-2xl font-bold text-orange-400">{testBlock.endVolume}%</p>
-                    </div>
-                  </div>
-
-                  <div className="p-3 bg-blue-500/10 rounded">
-                    <p className="text-xs text-muted-foreground mb-2">Ziel-Lautstärke um {String(testHour).padStart(2, '0')}:00</p>
-                    {(() => {
-                      const testTime = new Date();
-                      testTime.setHours(parseInt(testHour), 0, 0, 0);
-                      const result = calculateTargetVolume(testBlock, testTime);
-                      return (
-                        <div className="space-y-1">
-                          <p className="text-2xl font-bold text-blue-400">{result.targetVolume}%</p>
-                          {result.nextStep && (
-                            <p className="text-xs text-muted-foreground">
-                              Nächster Schritt: {result.nextStep.time} → {result.nextStep.volume}%
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+      {results.length === 0 && (
+        <div className="bento-panel border-dashed border-border/30 p-16 text-center">
+          <Activity className="w-16 h-16 text-muted-foreground/20 mx-auto mb-4" />
+          <h3 className="text-xl font-bold mb-2">Noch kein Check ausgeführt</h3>
+          <p className="text-muted-foreground text-sm">Klicke "System Check starten" um alle Komponenten zu prüfen.</p>
         </div>
       )}
+
+      {/* Base44 limitations note */}
+      <div className="bento-panel border-border/20 p-4 text-xs text-muted-foreground space-y-2">
+        <p className="font-bold text-foreground/60">Technische Grenzen dieser Plattform</p>
+        <p>• <strong>Kein persistentes WebSocket:</strong> Tablet-Heartbeat wird per Polling realisiert (alle 15s).</p>
+        <p>• <strong>Scheduler minimum 5 Minuten:</strong> Lautstärke-Rampen unter 5 Minuten sind nicht automatisierbar.</p>
+        <p>• <strong>Spotify Web Playback SDK auf iOS eingeschränkt:</strong> iPads werden über Spotify Connect / API gesteuert, nicht über SDK.</p>
+        <p>• <strong>Empfehlung für zuverlässige Rampen:</strong> Verwende "every_15_min" Modus. Für feinere Steuerung wird ein externer Worker empfohlen.</p>
+      </div>
     </div>
   );
 }

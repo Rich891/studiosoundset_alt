@@ -1,0 +1,62 @@
+{
+  "name": "SpotifyAccount",
+  "type": "object",
+  "properties": {
+    "displayName": {
+      "type": "string"
+    },
+    "zoneId": {
+      "type": "string"
+    },
+    "authStatus": {
+      "type": "string",
+      "enum": [
+        "connected",
+        "disconnected",
+        "expired",
+        "error"
+      ],
+      "default": "disconnected"
+    },
+    "tokenStatus": {
+      "type": "string",
+      "enum": [
+        "valid",
+        "expired",
+        "missing",
+        "unknown"
+      ],
+      "default": "unknown"
+    },
+    "tokenExpiresAt": {
+      "type": "string"
+    },
+    "scopes": {
+      "type": "string"
+    },
+    "lastApiTestAt": {
+      "type": "string"
+    },
+    "lastApiTestStatus": {
+      "type": "string",
+      "enum": [
+        "success",
+        "failed",
+        "untested"
+      ],
+      "default": "untested"
+    },
+    "lastError": {
+      "type": "string"
+    },
+    "spotifyUserId": {
+      "type": "string"
+    },
+    "spotifyUserEmail": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "displayName"
+  ]
+}

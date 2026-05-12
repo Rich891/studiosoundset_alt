@@ -14,37 +14,25 @@
     "name": {
       "type": "string"
     },
-    "artistName": {
+    "artist": {
       "type": "string"
     },
-    "albumName": {
-      "type": "string"
-    },
-    "albumCoverUrl": {
+    "album": {
       "type": "string"
     },
     "durationMs": {
       "type": "number"
     },
-    "trackNumber": {
-      "type": "number"
+    "coverUrl": {
+      "type": "string"
     },
     "explicit": {
       "type": "boolean",
       "default": false
     },
-    "externalUrl": {
-      "type": "string"
-    },
-    "isPlayable": {
-      "type": "boolean",
-      "default": true
-    },
-    "addedAt": {
-      "type": "string"
-    },
     "sortOrder": {
-      "type": "number"
+      "type": "number",
+      "default": 0
     }
   },
   "required": [

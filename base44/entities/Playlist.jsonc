@@ -2,7 +2,10 @@
   "name": "Playlist",
   "type": "object",
   "properties": {
-    "providerId": {
+    "spotifyAccountId": {
+      "type": "string"
+    },
+    "zoneId": {
       "type": "string"
     },
     "providerPlaylistId": {
@@ -17,54 +20,37 @@
     "description": {
       "type": "string"
     },
-    "ownerName": {
-      "type": "string"
-    },
-    "mood": {
-      "type": "string"
-    },
-    "energyLevel": {
-      "type": "string",
-      "enum": [
-        "low",
-        "medium",
-        "high",
-        "very_high"
-      ]
-    },
-    "bpmRange": {
+    "owner": {
       "type": "string"
     },
     "coverUrl": {
-      "type": "string"
-    },
-    "externalUrl": {
       "type": "string"
     },
     "totalTracks": {
       "type": "number",
       "default": 0
     },
-    "isCommerciallySafe": {
-      "type": "boolean",
-      "default": false
+    "importedTracks": {
+      "type": "number",
+      "default": 0
     },
-    "licenseStatus": {
+    "syncStatus": {
       "type": "string",
       "enum": [
-        "demo",
-        "licensed",
-        "unlicensed",
-        "unknown"
+        "synced",
+        "partial",
+        "pending",
+        "error",
+        "not_imported"
       ],
-      "default": "unknown"
+      "default": "not_imported"
     },
-    "lastImportedAt": {
+    "lastSyncAt": {
       "type": "string"
     }
   },
   "required": [
     "name",
-    "providerId"
+    "spotifyAccountId"
   ]
 }

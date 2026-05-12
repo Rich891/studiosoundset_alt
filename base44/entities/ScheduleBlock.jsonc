@@ -5,6 +5,12 @@
     "zoneId": {
       "type": "string"
     },
+    "spotifyAccountId": {
+      "type": "string"
+    },
+    "targetDeviceId": {
+      "type": "string"
+    },
     "playlistId": {
       "type": "string"
     },
@@ -13,25 +19,19 @@
     },
     "dayOfWeek": {
       "type": "number",
-      "description": "0=Sunday, 1=Monday, ..., 6=Saturday"
+      "description": "0=Sunday ... 6=Saturday"
     },
     "startTime": {
-      "type": "string",
-      "description": "HH:MM format"
+      "type": "string"
     },
     "endTime": {
-      "type": "string",
-      "description": "HH:MM format"
-    },
-    "repeatWeekly": {
-      "type": "boolean",
-      "default": true
+      "type": "string"
     },
     "baseVolume": {
       "type": "number",
       "default": 50
     },
-    "volumeRampEnabled": {
+    "rampEnabled": {
       "type": "boolean",
       "default": false
     },
@@ -53,12 +53,13 @@
       ],
       "default": "continuous"
     },
-    "isActive": {
+    "repeatWeekly": {
       "type": "boolean",
       "default": true
     },
-    "createdBy": {
-      "type": "string"
+    "isActive": {
+      "type": "boolean",
+      "default": true
     }
   },
   "required": [

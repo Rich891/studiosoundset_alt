@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import PageHeader from '@/components/ui/PageHeader';
 import { toast } from 'sonner';
 
 export default function Settings() {
@@ -39,10 +38,16 @@ export default function Settings() {
   const form = { ...{ name: '', address: '', timezone: 'Europe/Berlin', defaultLanguage: 'de' }, ...studio, ...studioForm };
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl">
-      <PageHeader title="Einstellungen" subtitle="Studio-Konfiguration und App-Einstellungen" />
+    <div className="p-4 lg:p-8 space-y-6 max-w-2xl">
+      <div className="mb-6">
+        <h1 className="text-2xl font-black flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-muted/20 border border-border flex items-center justify-center"><SettingsIcon className="w-5 h-5 text-muted-foreground" /></div>
+          Einstellungen
+        </h1>
+        <p className="text-sm text-muted-foreground mt-1 ml-12">Studio-Konfiguration</p>
+      </div>
 
-      <Card className="glass-card">
+      <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Globe className="w-4 h-4 text-primary" /> Studio-Konfiguration
@@ -102,7 +107,7 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      <Card className="glass-card">
+      <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Shield className="w-4 h-4 text-primary" /> App-Informationen
