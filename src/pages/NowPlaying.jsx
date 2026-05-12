@@ -80,7 +80,7 @@ export default function NowPlaying() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.06 }}
                 >
-                  <NowPlayingCard zone={zone} device={device} />
+                  <NowPlayingCard zone={zone} device={device} providers={providers} />
                 </motion.div>
               );
             })}
