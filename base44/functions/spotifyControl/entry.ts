@@ -213,9 +213,21 @@ Deno.serve(async (req) => {
     // ── SET VOLUME ──────────────────────────────────────────────────────────────
     if (action === 'setVolume') {
       if (volume === undefined) return Response.json({ error: 'Missing volume' }, { status: 400 });
-      const queryParams = deviceId ? `?volume_percent=${volume}&device_id=${deviceId}` : `?volume_percent=${volume}`;
-      await spotifyRequestWithRefresh('PUT', `/me/player/volume${queryParams}`);
-      return Response.json({ success: true });
+      // Try with explicit device_id first, fallback to no device
+      let queryParams = deviceId
+        ? `?volume_percent=${Math.round(volume)}&device_id=${deviceId}`
+        : `?volume_percent=${Math.round(volume)}`;
+      try {
+        await spotifyRequestWithRefresh('PUT', `/me/player/volume${queryParams}`);
+        return Response.json({ success: true });
+      } catch (e) {
+        // If device-specific call failed, try without device_id
+        if (deviceId && (e.message.includes('404') || e.message.includes('No active device'))) {
+          await spotifyRequestWithRefresh('PUT', `/me/player/volume?volume_percent=${Math.round(volume)}`);
+          return Response.json({ success: true });
+        }
+        throw e;
+      }
     }
 
     // ── PLAY PLAYLIST ───────────────────────────────────────────────────────────

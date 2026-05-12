@@ -55,10 +55,14 @@ export default function SpotifyPlayer({ provider }) {
   const handleAction = async (action, extra = {}) => {
     setActionLoading(true);
     try {
-      await invoke(action, extra);
-      setTimeout(refresh, 800);
+      const res = await invoke(action, extra);
+      if (res?.data?.error) {
+        toast.error('Fehler: ' + res.data.error);
+      } else {
+        setTimeout(refresh, 800);
+      }
     } catch (e) {
-      toast.error('Fehler: ' + e.message);
+      toast.error('Fehler: ' + (e?.response?.data?.error || e.message));
     } finally {
       setActionLoading(false);
     }
@@ -70,9 +74,13 @@ export default function SpotifyPlayer({ provider }) {
     if (volumeDebounceRef.current) clearTimeout(volumeDebounceRef.current);
     volumeDebounceRef.current = setTimeout(async () => {
       try {
-        await invoke('setVolume', { volume: num });
+        const activeDeviceId = playback?.device?.id;
+        const res = await invoke('setVolume', { volume: num, deviceId: activeDeviceId });
+        if (res?.data?.error) {
+          toast.error('Lautstärke: ' + res.data.error);
+        }
       } catch (e) {
-        toast.error('Lautstärke konnte nicht gesetzt werden');
+        toast.error('Lautstärke: ' + (e?.response?.data?.error || e.message));
       }
     }, 300);
   };
@@ -187,7 +195,7 @@ export default function SpotifyPlayer({ provider }) {
             <div className="flex items-center justify-center gap-4">
               <Button
                 variant="ghost" size="icon"
-                onClick={() => handleAction('previous')}
+                onClick={() => handleAction('previous', { deviceId: playback?.device?.id })}
                 disabled={actionLoading}
               >
                 <SkipBack className="w-5 h-5" />
@@ -195,7 +203,7 @@ export default function SpotifyPlayer({ provider }) {
               <Button
                 size="icon"
                 className={cn('w-12 h-12 rounded-full', isPlaying ? 'bg-muted hover:bg-muted/80' : 'bg-primary hover:bg-primary/90')}
-                onClick={() => handleAction(isPlaying ? 'pause' : 'play')}
+                onClick={() => handleAction(isPlaying ? 'pause' : 'play', { deviceId: playback?.device?.id })}
                 disabled={actionLoading}
               >
                 {isPlaying
@@ -205,7 +213,7 @@ export default function SpotifyPlayer({ provider }) {
               </Button>
               <Button
                 variant="ghost" size="icon"
-                onClick={() => handleAction('next')}
+                onClick={() => handleAction('next', { deviceId: playback?.device?.id })}
                 disabled={actionLoading}
               >
                 <SkipForward className="w-5 h-5" />
