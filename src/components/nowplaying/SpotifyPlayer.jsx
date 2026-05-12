@@ -9,48 +9,78 @@ export default function SpotifyPlayer({ provider }) {
   const [playback, setPlayback] = useState(null);
   const [devices, setDevices] = useState([]);
   const [volume, setVolume] = useState(50);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);       // nur beim ersten Laden
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isAuthed, setIsAuthed] = useState(null);
+  const [localProgressMs, setLocalProgressMs] = useState(0); // lokaler Fortschrittszähler
   const volumeDebounceRef = useRef(null);
+  const tickerRef = useRef(null);
+  const playbackRef = useRef(null);
 
   const invoke = useCallback(async (action, extra = {}) => {
     return base44.functions.invoke('spotifyControl', { providerId: provider.id, action, ...extra });
   }, [provider.id]);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  // Lokalen Ticker starten/stoppen je nach Wiedergabe-Status
+  const startTicker = useCallback((startMs) => {
+    if (tickerRef.current) clearInterval(tickerRef.current);
+    let ms = startMs;
+    tickerRef.current = setInterval(() => {
+      ms += 1000;
+      const dur = playbackRef.current?.item?.duration_ms || 1;
+      if (ms > dur) ms = dur;
+      setLocalProgressMs(ms);
+    }, 1000);
+  }, []);
+
+  const stopTicker = useCallback(() => {
+    if (tickerRef.current) { clearInterval(tickerRef.current); tickerRef.current = null; }
+  }, []);
+
+  // Hintergrund-Refresh (kein Spinner, kein Loading-State)
+  const refresh = useCallback(async (initial = false) => {
+    if (initial) setLoading(true);
     setError(null);
     try {
       const [pbRes, devRes] = await Promise.all([
         invoke('getCurrentPlayback'),
         invoke('getDevices'),
       ]);
-      setPlayback(pbRes.data?.playback || null);
+      const pb = pbRes.data?.playback || null;
+      setPlayback(pb);
+      playbackRef.current = pb;
       setDevices(devRes.data?.devices || []);
-      if (pbRes.data?.playback?.device?.volume_percent !== undefined) {
-        setVolume(pbRes.data.playback.device.volume_percent);
+      if (pb?.device?.volume_percent !== undefined) {
+        setVolume(pb.device.volume_percent);
+      }
+      const prog = pb?.progress_ms || 0;
+      setLocalProgressMs(prog);
+      if (pb?.is_playing) {
+        startTicker(prog);
+      } else {
+        stopTicker();
       }
     } catch (e) {
       setError(e.message);
+      stopTicker();
     } finally {
-      setLoading(false);
+      if (initial) setLoading(false);
     }
-  }, [invoke]);
+  }, [invoke, startTicker, stopTicker]);
 
   useEffect(() => {
     base44.auth.isAuthenticated().then((authed) => {
       setIsAuthed(authed);
       if (authed) {
-        refresh();
-        const interval = setInterval(refresh, 30000);
-        return () => clearInterval(interval);
+        refresh(true);
+        const interval = setInterval(() => refresh(false), 30000);
+        return () => { clearInterval(interval); stopTicker(); };
       } else {
         setLoading(false);
       }
     });
-  }, [refresh]);
+  }, [refresh, stopTicker]);
 
   const handleAction = async (action, extra = {}) => {
     setActionLoading(true);
@@ -59,7 +89,7 @@ export default function SpotifyPlayer({ provider }) {
       if (res?.data?.error) {
         toast.error('Fehler: ' + res.data.error);
       } else {
-        setTimeout(refresh, 800);
+        setTimeout(() => refresh(false), 800);
       }
     } catch (e) {
       toast.error('Fehler: ' + (e?.response?.data?.error || e.message));
@@ -100,9 +130,8 @@ export default function SpotifyPlayer({ provider }) {
 
   const track = playback?.item;
   const isPlaying = playback?.is_playing;
-  const progressMs = playback?.progress_ms || 0;
   const durationMs = track?.duration_ms || 1;
-  const progressPct = Math.round((progressMs / durationMs) * 100);
+  const progressPct = Math.min(100, Math.round((localProgressMs / durationMs) * 100));
 
   if (isAuthed === false) {
     return (
@@ -130,7 +159,7 @@ export default function SpotifyPlayer({ provider }) {
           <p className="text-sm font-medium text-destructive">Verbindungsfehler</p>
           <p className="text-xs text-muted-foreground">{error}</p>
         </div>
-        <Button variant="outline" size="sm" className="ml-auto" onClick={refresh}>Retry</Button>
+        <Button variant="outline" size="sm" className="ml-auto" onClick={() => refresh(true)}>Retry</Button>
       </div>
     );
   }
@@ -143,7 +172,7 @@ export default function SpotifyPlayer({ provider }) {
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
             🎵 {provider.name}
           </h3>
-          <button onClick={refresh} className="text-muted-foreground hover:text-foreground transition-colors">
+          <button onClick={() => refresh(false)} className="text-muted-foreground hover:text-foreground transition-colors">
             <RefreshCw className="w-4 h-4" />
           </button>
         </div>
@@ -186,7 +215,7 @@ export default function SpotifyPlayer({ provider }) {
                 />
               </div>
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{formatMs(progressMs)}</span>
+                <span>{formatMs(localProgressMs)}</span>
                 <span>{formatMs(durationMs)}</span>
               </div>
             </div>
