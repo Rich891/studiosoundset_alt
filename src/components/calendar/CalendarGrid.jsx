@@ -1,243 +1,296 @@
-import { useState, useRef } from 'react';
-import { Edit2, Trash2 } from 'lucide-react';
+import { useState, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Edit2, Trash2, TrendingUp } from 'lucide-react';
 
-const HOURS = Array.from({ length: 19 }, (_, i) => i + 5);
-const DAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+// 05:00 – 24:00 = 19 Stunden
+const START_HOUR = 5;
+const END_HOUR = 24;
+const TOTAL_HOURS = END_HOUR - START_HOUR;
+const PX_PER_HOUR = 60;
+const TOTAL_PX = TOTAL_HOURS * PX_PER_HOUR;
+
+const HOURS = Array.from({ length: TOTAL_HOURS + 1 }, (_, i) => i + START_HOUR);
+const DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+const DAYS_FULL = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
 const DAY_INDICES = [1, 2, 3, 4, 5, 6, 0];
 
-export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDelete, selectedZone }) {
-  const [dragState, setDragState] = useState(null);
-  const gridRefs = useRef({});
+function snapTo15(minutes) {
+  return Math.round(minutes / 15) * 15;
+}
 
-  // Filter blocks by zone
-  const filteredBlocks = selectedZone 
-    ? blocks.filter(b => b.zoneId === selectedZone)
-    : blocks;
+function pxToTime(px) {
+  const totalMinutes = (px / PX_PER_HOUR) * 60;
+  const rawMinutes = Math.max(0, Math.min(TOTAL_HOURS * 60, totalMinutes));
+  const snapped = snapTo15(rawMinutes);
+  const absoluteMinutes = START_HOUR * 60 + snapped;
+  const h = Math.floor(absoluteMinutes / 60);
+  const m = absoluteMinutes % 60;
+  return { h: Math.min(23, h), m, str: `${String(Math.min(23, h)).padStart(2, '0')}:${String(m).padStart(2, '0')}` };
+}
 
-  // Group blocks by day
-  const blocksByDay = DAY_INDICES.map(dayIdx => 
-    filteredBlocks.filter(b => b.dayOfWeek === dayIdx)
-  );
+function timeToPx(timeStr) {
+  const [h, m] = timeStr.split(':').map(Number);
+  return ((h + m / 60) - START_HOUR) * PX_PER_HOUR;
+}
 
-  const getBlockPosition = (block) => {
-    const [startHour, startMin] = block.startTime.split(':').map(Number);
-    const [endHour, endMin] = block.endTime.split(':').map(Number);
-    
-    const startTotal = startHour + startMin / 60;
-    const endTotal = endHour + endMin / 60;
-    
-    const topPercent = ((startTotal - 5) / 19) * 100;
-    const heightPercent = ((endTotal - startTotal) / 19) * 100;
-    
-    return { topPercent, heightPercent };
-  };
+function blockHeightPx(startTime, endTime) {
+  const [sh, sm] = startTime.split(':').map(Number);
+  const [eh, em] = endTime.split(':').map(Number);
+  return ((eh + em / 60) - (sh + sm / 60)) * PX_PER_HOUR;
+}
 
-  // Berechne Zeit von Y-Position
-  const timeFromY = (grid, clientY) => {
-    if (!grid) return null;
-    const rect = grid.getBoundingClientRect();
-    const y = clientY - rect.top;
-    const percent = Math.max(0, Math.min(1, y / rect.height));
-    const hourValue = percent * 19 + 5;
-    const hour = Math.floor(hourValue);
-    const minute = Math.round((hourValue - hour) * 60 / 15) * 15; // Runde auf 15-Min
-    return { hour: Math.min(23, hour), minute };
-  };
+export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDelete }) {
+  const [drag, setDrag] = useState(null); // { dayIdx, startPx, currentPx }
+  const [draggingBlock, setDraggingBlock] = useState(null); // { block, offsetPx, dayIdx }
+  const columnRefs = useRef({});
 
-  const handleMouseDown = (e, dayIdx) => {
-    if (e.target.closest('button')) return;
-    
-    const grid = gridRefs.current[dayIdx];
-    if (!grid) return;
+  const getRelativeY = useCallback((colEl, clientY) => {
+    if (!colEl) return 0;
+    const rect = colEl.getBoundingClientRect();
+    return Math.max(0, Math.min(TOTAL_PX, clientY - rect.top));
+  }, []);
 
-    const startTime = timeFromY(grid, e.clientY);
-    if (!startTime) return;
-
-    setDragState({
-      dayIdx,
-      startTime,
-      currentTime: startTime,
-      isDragging: true,
-    });
+  // ── New block drag ──
+  const handleColumnMouseDown = (e, dayIdx) => {
+    if (e.button !== 0) return;
+    if (e.target.closest('[data-block]')) return;
+    e.preventDefault();
+    const col = columnRefs.current[dayIdx];
+    const y = getRelativeY(col, e.clientY);
+    setDrag({ dayIdx, startPx: y, currentPx: y });
   };
 
   const handleMouseMove = (e) => {
-    if (!dragState?.isDragging) return;
-
-    const grid = gridRefs.current[dragState.dayIdx];
-    if (!grid) return;
-
-    const currentTime = timeFromY(grid, e.clientY);
-    if (!currentTime) return;
-
-    setDragState(prev => ({
-      ...prev,
-      currentTime,
-    }));
+    if (drag) {
+      const col = columnRefs.current[drag.dayIdx];
+      const y = getRelativeY(col, e.clientY);
+      setDrag(prev => ({ ...prev, currentPx: y }));
+    }
+    if (draggingBlock) {
+      const col = columnRefs.current[draggingBlock.dayIdx];
+      const y = getRelativeY(col, e.clientY) - draggingBlock.offsetPx;
+      const clamped = Math.max(0, Math.min(TOTAL_PX - blockHeightPx(draggingBlock.block.startTime, draggingBlock.block.endTime), y));
+      setDraggingBlock(prev => ({ ...prev, currentPx: clamped }));
+    }
   };
 
-  const handleMouseUp = (e) => {
-    if (!dragState?.isDragging) return;
-
-    const { dayIdx, startTime, currentTime } = dragState;
-
-    let start = startTime;
-    let end = currentTime;
-
-    // Sortiere so dass start < end
-    if (start.hour > end.hour || (start.hour === end.hour && start.minute >= end.minute)) {
-      [start, end] = [end, start];
-    }
-
-    // Stelle sicher dass mindestens 15 Min Differenz
-    if (start.hour === end.hour && start.minute === end.minute) {
-      end = { ...end, minute: (end.minute + 15) % 60 };
-      if (end.minute < start.minute) {
-        end.hour += 1;
+  const handleMouseUp = () => {
+    if (drag) {
+      const { dayIdx, startPx, currentPx } = drag;
+      let top = Math.min(startPx, currentPx);
+      let bot = Math.max(startPx, currentPx);
+      if (bot - top < 15) bot = top + 15;
+      const start = pxToTime(top);
+      const end = pxToTime(bot);
+      if (start.str !== end.str) {
+        onOpenForm(DAY_INDICES[dayIdx], start.str, end.str);
       }
+      setDrag(null);
     }
-
-    const startStr = `${String(start.hour).padStart(2, '0')}:${String(start.minute).padStart(2, '0')}`;
-    const endStr = `${String(end.hour).padStart(2, '0')}:${String(end.minute).padStart(2, '0')}`;
-
-    onOpenForm(DAY_INDICES[dayIdx], startStr, endStr);
-
-    setDragState(null);
+    if (draggingBlock) {
+      const { block, currentPx, dayIdx } = draggingBlock;
+      const height = blockHeightPx(block.startTime, block.endTime);
+      const startT = pxToTime(currentPx);
+      const endMinutes = (startT.h * 60 + startT.m) + height;
+      const endH = Math.floor(endMinutes / 60);
+      const endM = snapTo15(endMinutes % 60);
+      const endStr = `${String(Math.min(23, endH)).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+      onEdit({ ...block, startTime: startT.str, endTime: endStr });
+      setDraggingBlock(null);
+    }
   };
 
-  const getDragPreviewStyle = () => {
-    if (!dragState?.isDragging) return null;
-
-    const { startTime, currentTime } = dragState;
-    let start = startTime;
-    let end = currentTime;
-
-    if (start.hour > end.hour || (start.hour === end.hour && start.minute >= end.minute)) {
-      [start, end] = [end, start];
-    }
-
-    const startTotal = start.hour + start.minute / 60;
-    const endTotal = end.hour + end.minute / 60;
-
-    const topPercent = ((startTotal - 5) / 19) * 100;
-    const heightPercent = ((endTotal - startTotal) / 19) * 100;
-
-    return {
-      top: `${topPercent}%`,
-      height: `${heightPercent}%`,
-    };
+  const getDragPreview = () => {
+    if (!drag) return null;
+    const { startPx, currentPx } = drag;
+    const top = Math.min(startPx, currentPx);
+    const height = Math.max(15, Math.abs(currentPx - startPx));
+    const start = pxToTime(top);
+    const end = pxToTime(top + height);
+    return { top, height, startStr: start.str, endStr: end.str };
   };
+
+  const preview = getDragPreview();
 
   return (
-    <div className="space-y-4" onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
+    <div
+      className="select-none"
+      style={{ cursor: drag ? 'crosshair' : draggingBlock ? 'grabbing' : 'default' }}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
       {/* Legend */}
-      <div className="flex items-center gap-2 flex-wrap text-xs">
-        <span className="text-muted-foreground">Ziehe über einen Zeitbereich um einen Block zu erstellen</span>
-      </div>
+      <p className="text-xs text-muted-foreground mb-3 flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-primary/60 inline-block" />
+        Klicken & Ziehen zum Erstellen · Blöcke verschiebbar · Klick zum Bearbeiten
+      </p>
 
-      {/* Calendar Grid */}
-      <div className="grid grid-cols-8 gap-1 bg-muted/20 p-4 rounded-lg border border-border/20">
-        {/* Time Column */}
-        <div className="col-span-1">
-          <div className="text-xs font-semibold text-muted-foreground mb-2">Uhrzeit</div>
-          <div className="space-y-0">
-            {HOURS.map((hour) => (
-              <div key={hour} className="h-20 flex items-center justify-end pr-2">
-                <span className="text-xs text-muted-foreground">{String(hour).padStart(2, '0')}:00</span>
+      {/* Scrollable grid */}
+      <div className="overflow-x-auto rounded-xl border border-border/30">
+        <div style={{ minWidth: '700px' }}>
+          {/* Day headers */}
+          <div className="grid border-b border-border/30" style={{ gridTemplateColumns: '52px repeat(7, 1fr)' }}>
+            <div className="p-2" />
+            {DAYS.map((d, i) => (
+              <div key={i} className="p-2 text-center">
+                <span className="text-xs font-bold text-foreground hidden md:block">{DAYS_FULL[i]}</span>
+                <span className="text-xs font-bold text-foreground md:hidden">{d}</span>
               </div>
             ))}
           </div>
-        </div>
 
-        {/* Day Columns */}
-        {DAYS.map((day, dayIdx) => (
-          <div key={dayIdx} className="col-span-1">
-            <div className="text-xs font-semibold text-foreground mb-2 text-center">{day}</div>
-            <div 
-              ref={(el) => { gridRefs.current[dayIdx] = el; }}
-              className="relative border border-border/30 rounded bg-card/50 cursor-cell select-none"
-              style={{ height: `${HOURS.length * 30}px` }}
-              onMouseDown={(e) => handleMouseDown(e, dayIdx)}
-            >
-              {/* Hour grid */}
-              {HOURS.map((hour) => (
-                <div key={hour} className="border-b border-border/20 hover:bg-primary/5 transition-colors pointer-events-none" style={{ height: '30px' }}>
-                  {/* 15-min subdivisions */}
-                  {[0, 15, 30, 45].map((min) => (
-                    <div key={min} className="border-b border-border/10 text-xs px-1" style={{ height: '7.5px' }} />
-                  ))}
+          {/* Body */}
+          <div className="grid" style={{ gridTemplateColumns: '52px repeat(7, 1fr)' }}>
+            {/* Time column */}
+            <div className="relative" style={{ height: `${TOTAL_PX}px` }}>
+              {HOURS.map((h, idx) => (
+                <div
+                  key={h}
+                  className="absolute right-2 flex items-center"
+                  style={{ top: `${idx * PX_PER_HOUR - 8}px`, height: '16px' }}
+                >
+                  <span className="text-[10px] text-muted-foreground font-mono tabular-nums">
+                    {String(h).padStart(2, '0')}:00
+                  </span>
                 </div>
               ))}
-
-              {/* Blocks */}
-              {blocksByDay[dayIdx].map((block) => {
-                const zone = zones.find(z => z.id === block.zoneId);
-                const { topPercent, heightPercent } = getBlockPosition(block);
-                const isRamped = block.volumeRampEnabled;
-
-                return (
-                  <div
-                    key={block.id}
-                    className="absolute left-1 right-1 rounded-lg p-2 text-xs group transition-all hover:shadow-lg hover:z-40 pointer-events-auto"
-                    style={{
-                      top: `${topPercent}%`,
-                      height: `${heightPercent}%`,
-                      background: `${zone?.color || '#6366f1'}30`,
-                      borderLeft: `3px solid ${zone?.color || '#6366f1'}`,
-                    }}
-                  >
-                    <div className="h-full flex flex-col justify-between">
-                      <div className="flex-1 overflow-hidden">
-                        <p className="font-semibold truncate text-foreground">{block.title || zone?.name || 'Block'}</p>
-                        <p className="text-xs text-muted-foreground truncate">{block.startTime} – {block.endTime}</p>
-                        {block.playlistId && <p className="text-xs text-primary mt-0.5">♪ Playlist</p>}
-                      </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-medium">
-                          {isRamped ? `${block.startVolume}% → ${block.endVolume}%` : `${block.baseVolume}%`}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Hover Actions */}
-                    <div className="opacity-0 group-hover:opacity-100 absolute top-1 right-1 transition-opacity flex gap-1 bg-black/50 rounded p-1 pointer-events-auto">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEdit(block);
-                        }}
-                        className="p-1 hover:bg-primary/20 rounded text-primary"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDelete(block.id);
-                        }}
-                        className="p-1 hover:bg-destructive/20 rounded text-destructive"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Drag Preview */}
-              {dragState?.isDragging && getDragPreviewStyle() && (
-                <div
-                  className="absolute left-1 right-1 rounded-lg border-2 border-primary bg-primary/20 pointer-events-none z-50 transition-all"
-                  style={getDragPreviewStyle()}
-                >
-                  <div className="p-2 text-xs font-semibold text-primary">
-                    {dragState.startTime.hour}:{String(dragState.startTime.minute).padStart(2, '0')} → {dragState.currentTime.hour}:{String(dragState.currentTime.minute).padStart(2, '0')}
-                  </div>
-                </div>
-              )}
             </div>
+
+            {/* Day columns */}
+            {DAY_INDICES.map((dayIdx, colIdx) => {
+              const dayBlocks = blocks.filter(b => b.dayOfWeek === dayIdx);
+              const isDraggingHere = drag?.dayIdx === colIdx;
+
+              return (
+                <div
+                  key={colIdx}
+                  ref={el => { columnRefs.current[colIdx] = el; }}
+                  className="relative border-l border-border/20 cursor-crosshair"
+                  style={{ height: `${TOTAL_PX}px` }}
+                  onMouseDown={e => handleColumnMouseDown(e, colIdx)}
+                >
+                  {/* Hour lines */}
+                  {HOURS.map((h, idx) => (
+                    <div
+                      key={h}
+                      className="absolute left-0 right-0 border-t border-white/5"
+                      style={{ top: `${idx * PX_PER_HOUR}px` }}
+                    >
+                      {/* 15-min lines */}
+                      {[15, 30, 45].map(min => (
+                        <div
+                          key={min}
+                          className="absolute left-0 right-0 border-t border-white/[0.025]"
+                          style={{ top: `${(min / 60) * PX_PER_HOUR}px` }}
+                        />
+                      ))}
+                    </div>
+                  ))}
+
+                  {/* Hover tint */}
+                  {isDraggingHere && (
+                    <div className="absolute inset-0 bg-primary/3 pointer-events-none" />
+                  )}
+
+                  {/* Blocks */}
+                  <AnimatePresence>
+                    {dayBlocks.map(block => {
+                      const zone = zones.find(z => z.id === block.zoneId);
+                      const color = zone?.color || '#7C3AED';
+                      const topPx = timeToPx(block.startTime);
+                      const heightPx = Math.max(28, blockHeightPx(block.startTime, block.endTime));
+                      const isBeingDragged = draggingBlock?.block?.id === block.id;
+                      const currentTop = isBeingDragged ? (draggingBlock.currentPx ?? topPx) : topPx;
+
+                      return (
+                        <motion.div
+                          key={block.id}
+                          data-block="true"
+                          initial={{ opacity: 0, scaleY: 0.8 }}
+                          animate={{ opacity: 1, scaleY: 1 }}
+                          exit={{ opacity: 0, scaleY: 0.8 }}
+                          className="absolute left-1 right-1 rounded-lg group z-10 transition-shadow"
+                          style={{
+                            top: `${currentTop}px`,
+                            height: `${heightPx}px`,
+                            background: `${color}22`,
+                            borderLeft: `3px solid ${color}`,
+                            boxShadow: isBeingDragged ? `0 8px 25px ${color}40` : undefined,
+                            cursor: 'grab',
+                          }}
+                          onMouseDown={e => {
+                            if (e.target.closest('button')) return;
+                            e.stopPropagation();
+                            const col = columnRefs.current[colIdx];
+                            const rect = col?.getBoundingClientRect();
+                            const clickY = e.clientY - (rect?.top || 0);
+                            setDraggingBlock({ block, offsetPx: clickY - topPx, dayIdx: colIdx, currentPx: topPx });
+                          }}
+                          onClick={e => {
+                            if (draggingBlock) return;
+                            onEdit(block);
+                          }}
+                        >
+                          <div className="h-full flex flex-col justify-between p-1.5 overflow-hidden">
+                            <div className="overflow-hidden">
+                              <p className="text-[11px] font-bold truncate leading-tight" style={{ color }}>
+                                {block.title || zone?.name || 'Block'}
+                              </p>
+                              {heightPx > 40 && (
+                                <p className="text-[10px] text-white/50 leading-tight">
+                                  {block.startTime}–{block.endTime}
+                                </p>
+                              )}
+                            </div>
+                            {heightPx > 55 && (
+                              <div className="flex items-center gap-1">
+                                {block.volumeRampEnabled
+                                  ? <span className="text-[10px] font-semibold" style={{ color }}>{block.startVolume}%→{block.endVolume}%</span>
+                                  : <span className="text-[10px] font-semibold" style={{ color }}>{block.baseVolume}%</span>
+                                }
+                                {block.volumeRampEnabled && <TrendingUp className="w-2.5 h-2.5" style={{ color }} />}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Action buttons */}
+                          <div className="opacity-0 group-hover:opacity-100 absolute top-1 right-1 flex gap-0.5 bg-black/60 rounded-md p-0.5 transition-opacity pointer-events-auto">
+                            <button
+                              onClick={e => { e.stopPropagation(); onEdit(block); }}
+                              className="p-1 hover:bg-primary/20 rounded text-primary/80 hover:text-primary"
+                            >
+                              <Edit2 className="w-2.5 h-2.5" />
+                            </button>
+                            <button
+                              onClick={e => { e.stopPropagation(); onDelete(block.id); }}
+                              className="p-1 hover:bg-destructive/20 rounded text-destructive/80 hover:text-destructive"
+                            >
+                              <Trash2 className="w-2.5 h-2.5" />
+                            </button>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
+
+                  {/* Drag preview */}
+                  {isDraggingHere && preview && (
+                    <div
+                      className="absolute left-1 right-1 rounded-lg border-2 border-dashed border-primary bg-primary/15 pointer-events-none z-20 flex flex-col justify-between p-2"
+                      style={{ top: `${preview.top}px`, height: `${preview.height}px` }}
+                    >
+                      <p className="text-[11px] font-bold text-primary">
+                        {preview.startStr} → {preview.endStr}
+                      </p>
+                      <p className="text-[10px] text-primary/60">Loslassen zum Erstellen</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        ))}
+        </div>
       </div>
     </div>
   );

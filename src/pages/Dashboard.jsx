@@ -1,225 +1,203 @@
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Link } from 'react-router-dom';
-import { 
-  Zap, Cpu, Music, Calendar, CheckCircle2, AlertCircle, Clock, Activity, Radio
+import { motion } from 'framer-motion';
+import {
+  Zap, Cpu, Music2, CalendarDays, PlayCircle, Activity,
+  Radio, CheckCircle2, AlertCircle, Clock, ArrowRight,
+  Plus, TestTube, Download
 } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
+import SetupFlow from '@/components/dashboard/SetupFlow';
 
 export default function Dashboard() {
-  const { data: providers = [] } = useQuery({
-    queryKey: ['providers'],
-    queryFn: () => base44.entities.Provider.list(),
-  });
-  const { data: devices = [] } = useQuery({
-    queryKey: ['devices'],
-    queryFn: () => base44.entities.Device.list(),
-  });
-  const { data: playlists = [] } = useQuery({
-    queryKey: ['playlists'],
-    queryFn: () => base44.entities.Playlist.list(),
-  });
-  const { data: zones = [] } = useQuery({
-    queryKey: ['zones'],
-    queryFn: () => base44.entities.Zone.list(),
-  });
-  const { data: blocks = [] } = useQuery({
-    queryKey: ['scheduleBlocks'],
-    queryFn: () => base44.entities.ScheduleBlock.list(),
-  });
-
-  // Setup Flow Status
-  const setupSteps = [
-    {
-      id: 1,
-      title: 'Provider',
-      description: 'Spotify verbinden',
-      icon: Zap,
-      status: providers.length > 0 ? 'done' : 'open',
-      action: '/providers/add',
-      link: '/providers',
-    },
-    {
-      id: 2,
-      title: 'Gerät',
-      description: 'Lautsprecher einrichten',
-      icon: Cpu,
-      status: devices.length > 0 ? 'done' : 'open',
-      action: '/devices/add',
-      link: '/devices',
-    },
-    {
-      id: 3,
-      title: 'Playlist',
-      description: 'Musik importieren',
-      icon: Music,
-      status: playlists.length > 0 ? 'done' : 'open',
-      action: '/playlists/import',
-      link: '/playlists',
-    },
-    {
-      id: 4,
-      title: 'Kalender',
-      description: 'Zeitblöcke planen',
-      icon: Calendar,
-      status: blocks.length > 0 ? 'done' : 'open',
-      action: '/calendar',
-      link: '/calendar',
-    },
-  ];
-
-  const completedSteps = setupSteps.filter(s => s.status === 'done').length;
-  const progress = (completedSteps / setupSteps.length) * 100;
+  const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: () => base44.entities.Provider.list() });
+  const { data: devices = [] }   = useQuery({ queryKey: ['devices'],   queryFn: () => base44.entities.Device.list() });
+  const { data: playlists = [] } = useQuery({ queryKey: ['playlists'], queryFn: () => base44.entities.Playlist.list() });
+  const { data: zones = [] }     = useQuery({ queryKey: ['zones'],     queryFn: () => base44.entities.Zone.list() });
+  const { data: blocks = [] }    = useQuery({ queryKey: ['scheduleBlocks'], queryFn: () => base44.entities.ScheduleBlock.list() });
 
   const connectedProviders = providers.filter(p => p.connectionStatus === 'connected');
   const onlineDevices = devices.filter(d => d.status === 'online');
+  const activeBlocks = blocks.filter(b => b.isActive);
+
+  const setupSteps = [
+    { id: 1, title: 'Provider', description: 'Spotify verbinden', status: providers.length > 0 ? 'done' : 'open', action: '/providers/add', link: '/providers' },
+    { id: 2, title: 'Gerät', description: 'Lautsprecher einrichten', status: devices.length > 0 ? 'done' : 'open', action: '/devices/add', link: '/devices' },
+    { id: 3, title: 'Playlist', description: 'Musik importieren', status: playlists.length > 0 ? 'done' : 'open', action: '/playlists/import', link: '/playlists' },
+    { id: 4, title: 'Kalender', description: 'Zeitblöcke planen', status: blocks.length > 0 ? 'done' : 'open', action: '/calendar', link: '/calendar' },
+    { id: 5, title: 'Testen', description: 'System prüfen', status: connectedProviders.length > 0 && onlineDevices.length > 0 ? 'done' : 'open', action: '/admin/system-check', link: '/admin/system-check' },
+  ];
+
+  const statCards = [
+    { icon: Zap,       label: 'Provider',  value: `${connectedProviders.length}/${providers.length}`,    sub: 'verbunden',    color: 'violet', link: '/providers' },
+    { icon: Cpu,       label: 'Geräte',    value: `${onlineDevices.length}/${devices.length}`,            sub: 'online',       color: 'cyan',   link: '/devices' },
+    { icon: Music2,    label: 'Playlists', value: playlists.length,                                       sub: 'importiert',   color: 'green',  link: '/playlists' },
+    { icon: Radio,     label: 'Zonen',     value: zones.length,                                           sub: 'konfiguriert', color: 'rose',   link: '/devices' },
+    { icon: CalendarDays, label: 'Blöcke', value: activeBlocks.length,                                   sub: 'aktiv geplant',color: 'orange', link: '/calendar' },
+  ];
+
+  const systemHealth = [
+    { label: 'Provider Auth',     ok: connectedProviders.length > 0,   okText: `${connectedProviders.length} verbunden`, failText: 'Setup erforderlich' },
+    { label: 'Geräte erkannt',    ok: devices.length > 0,              okText: `${devices.length} Geräte`, failText: 'Kein Gerät gefunden' },
+    { label: 'Playlists geladen', ok: playlists.length > 0,            okText: `${playlists.length} Playlists`, failText: 'Keine importiert' },
+    { label: 'Kalenderblöcke',   ok: activeBlocks.length > 0,         okText: `${activeBlocks.length} aktiv`, failText: 'Keine Blöcke' },
+  ];
+
+  const quickActions = [
+    { label: 'Provider verbinden', icon: Zap,          link: '/providers/add',        color: 'bg-violet-500/10 hover:bg-violet-500/20 border-violet-500/20 text-violet-300' },
+    { label: 'Gerät hinzufügen',   icon: Cpu,          link: '/devices/add',          color: 'bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/20 text-cyan-300' },
+    { label: 'Playlist importieren',icon: Download,    link: '/playlists/import',     color: 'bg-green-500/10 hover:bg-green-500/20 border-green-500/20 text-green-300' },
+    { label: 'Block erstellen',    icon: CalendarDays, link: '/calendar',             color: 'bg-orange-500/10 hover:bg-orange-500/20 border-orange-500/20 text-orange-300' },
+    { label: 'System Check',       icon: TestTube,     link: '/admin/system-check',   color: 'bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/20 text-rose-300' },
+  ];
 
   return (
-    <div className="p-8 space-y-8 max-w-6xl mx-auto">
+    <div className="p-6 lg:p-8 space-y-8 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex items-end justify-between">
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex items-end justify-between flex-wrap gap-4"
+      >
         <div>
-          <h1 className="text-4xl font-bold text-foreground">
-            Studio Sound <span className="gradient-text">Control Pro</span>
+          <h1 className="text-3xl lg:text-4xl font-black text-foreground leading-tight">
+            Studio<span className="gradient-text">Sound</span>Set
           </h1>
-          <p className="text-muted-foreground mt-2">{format(new Date(), 'dd.MM.yyyy HH:mm')}</p>
+          <p className="text-muted-foreground mt-1 text-sm">{format(new Date(), "EEEE, dd. MMMM yyyy · HH:mm 'Uhr'")}</p>
         </div>
-      </div>
+        <Link to="/now-playing">
+          <Button className="bg-primary/15 border border-primary/30 text-primary hover:bg-primary/25 h-10 px-5 gap-2">
+            <PlayCircle className="w-4 h-4" /> Now Playing
+          </Button>
+        </Link>
+      </motion.div>
 
-      {/* Setup Flow - Bento Style */}
-      <div className="space-y-3">
-        <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Einrichtungsplan</h2>
-        <div className="w-full h-2 rounded-full bg-muted/30 overflow-hidden">
-          <div 
-            className="h-full bg-gradient-to-r from-purple-500 via-blue-500 to-cyan-500 transition-all duration-500"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {setupSteps.map((step, idx) => {
-            const Icon = step.icon;
-            const isDone = step.status === 'done';
-            return (
-              <Link key={step.id} to={step.link}>
-                <Card className={`glass-card transition-all cursor-pointer hover:border-primary/50 h-full ${isDone ? 'border-green-500/30 bg-green-500/5' : 'border-muted/20'}`}>
-                  <CardContent className="p-6 space-y-4">
-                    <div className="flex items-start justify-between">
-                      <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${isDone ? 'bg-green-500/20' : 'bg-primary/20'}`}>
-                        <Icon className={`w-6 h-6 ${isDone ? 'text-green-400' : 'text-primary'}`} />
-                      </div>
-                      {isDone && <CheckCircle2 className="w-5 h-5 text-green-400" />}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold">{step.title}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{step.description}</p>
-                    </div>
-                    <Button size="sm" className={`w-full text-xs h-8 ${isDone ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' : 'bg-primary/20 text-primary hover:bg-primary/30'}`}>
-                      {isDone ? '✓ Fertig' : 'Starten'}
-                    </Button>
-                  </CardContent>
-                </Card>
+      {/* Setup Flow */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="bento-panel border-border/30 p-5"
+      >
+        <SetupFlow steps={setupSteps} />
+      </motion.div>
+
+      {/* Stat Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {statCards.map((card, idx) => {
+          const colorMap = {
+            violet: { bg: 'bg-violet-500/10', border: 'border-violet-500/20', text: 'text-violet-400', hover: 'hover:border-violet-500/35 hover:shadow-[0_0_25px_hsl(252,87%,67%,0.12)]' },
+            cyan:   { bg: 'bg-cyan-500/10',   border: 'border-cyan-500/20',   text: 'text-cyan-400',   hover: 'hover:border-cyan-500/35 hover:shadow-[0_0_25px_hsl(187,96%,47%,0.12)]' },
+            green:  { bg: 'bg-green-500/10',  border: 'border-green-500/20',  text: 'text-green-400',  hover: 'hover:border-green-500/35 hover:shadow-[0_0_25px_hsl(142,71%,45%,0.12)]' },
+            rose:   { bg: 'bg-rose-500/10',   border: 'border-rose-500/20',   text: 'text-rose-400',   hover: 'hover:border-rose-500/35 hover:shadow-[0_0_25px_hsl(328,85%,60%,0.12)]' },
+            orange: { bg: 'bg-orange-500/10', border: 'border-orange-500/20', text: 'text-orange-400', hover: 'hover:border-orange-500/35 hover:shadow-[0_0_25px_hsl(25,95%,53%,0.12)]' },
+          };
+          const c = colorMap[card.color];
+          const Icon = card.icon;
+          return (
+            <motion.div
+              key={card.label}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 + idx * 0.05 }}
+              whileHover={{ y: -3, transition: { duration: 0.15 } }}
+            >
+              <Link to={card.link} className="block">
+                <div className={`rounded-xl border ${c.border} ${c.hover} transition-all duration-200 p-4 bg-card/50`}>
+                  <div className={`w-9 h-9 rounded-lg ${c.bg} flex items-center justify-center mb-3`}>
+                    <Icon className={`w-4 h-4 ${c.text}`} />
+                  </div>
+                  <p className={`text-3xl font-black ${c.text}`}>{card.value}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{card.sub}</p>
+                  <p className="text-xs font-semibold text-foreground/70 mt-0.5">{card.label}</p>
+                </div>
               </Link>
-            );
-          })}
-        </div>
+            </motion.div>
+          );
+        })}
       </div>
 
-      {/* System Status Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Provider Status */}
-        <Card className="glass-card border-purple-500/20 bg-purple-500/5">
-          <CardContent className="p-6 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">Provider</p>
-              {connectedProviders.length > 0 ? <CheckCircle2 className="w-5 h-5 text-green-400" /> : <AlertCircle className="w-5 h-5 text-yellow-400" />}
-            </div>
-            <div className="text-3xl font-bold text-purple-400">{connectedProviders.length}/{providers.length}</div>
-            <p className="text-xs text-muted-foreground">verbunden</p>
-            <Link to="/providers"><Button size="sm" className="w-full h-8 text-xs">Verwalten</Button></Link>
-          </CardContent>
-        </Card>
+      {/* Bottom Grid: System Health + Quick Actions */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-        {/* Device Status */}
-        <Card className="glass-card border-blue-500/20 bg-blue-500/5">
-          <CardContent className="p-6 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">Geräte</p>
-              {onlineDevices.length > 0 ? <CheckCircle2 className="w-5 h-5 text-green-400" /> : <AlertCircle className="w-5 h-5 text-yellow-400" />}
-            </div>
-            <div className="text-3xl font-bold text-blue-400">{onlineDevices.length}/{devices.length}</div>
-            <p className="text-xs text-muted-foreground">online</p>
-            <Link to="/devices"><Button size="sm" className="w-full h-8 text-xs">Verwalten</Button></Link>
-          </CardContent>
-        </Card>
-
-        {/* Playlists Status */}
-        <Card className="glass-card border-green-500/20 bg-green-500/5">
-          <CardContent className="p-6 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">Playlists</p>
-              {playlists.length > 0 ? <CheckCircle2 className="w-5 h-5 text-green-400" /> : <AlertCircle className="w-5 h-5 text-yellow-400" />}
-            </div>
-            <div className="text-3xl font-bold text-green-400">{playlists.length}</div>
-            <p className="text-xs text-muted-foreground">importiert</p>
-            <Link to="/playlists"><Button size="sm" className="w-full h-8 text-xs">Verwalten</Button></Link>
-          </CardContent>
-        </Card>
-
-        {/* Calendar Status */}
-        <Card className="glass-card border-orange-500/20 bg-orange-500/5">
-          <CardContent className="p-6 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">Blöcke</p>
-              {blocks.length > 0 ? <CheckCircle2 className="w-5 h-5 text-green-400" /> : <AlertCircle className="w-5 h-5 text-yellow-400" />}
-            </div>
-            <div className="text-3xl font-bold text-orange-400">{blocks.length}</div>
-            <p className="text-xs text-muted-foreground">geplant</p>
-            <Link to="/calendar"><Button size="sm" className="w-full h-8 text-xs">Planen</Button></Link>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* System Health & Now Playing */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* System Check */}
-        <Card className="glass-card border-cyan-500/20 bg-cyan-500/5 lg:col-span-2">
-          <CardContent className="p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">System Health</h3>
-              <Activity className="w-5 h-5 text-cyan-400" />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Provider Auth</span>
-                {connectedProviders.length > 0 ? <span className="text-green-400">✓ OK</span> : <span className="text-yellow-400">⚠ Setup erforderlich</span>}
+        {/* System Health */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="lg:col-span-2 bento-panel border-cyan-500/15 p-5 space-y-4"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center">
+                <Activity className="w-5 h-5 text-cyan-400" />
               </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Geräte erkannt</span>
-                {devices.length > 0 ? <span className="text-green-400">✓ {devices.length} Stück</span> : <span className="text-yellow-400">⚠ Keine</span>}
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Playlists sync</span>
-                {playlists.length > 0 ? <span className="text-green-400">✓ {playlists.length} geladen</span> : <span className="text-yellow-400">⚠ Keine</span>}
+              <div>
+                <h3 className="font-bold text-foreground">System Health</h3>
+                <p className="text-xs text-muted-foreground">Echtzeit-Statusprüfung</p>
               </div>
             </div>
-            <Link to="/admin/system-check"><Button className="w-full bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 h-10">System Check starten</Button></Link>
-          </CardContent>
-        </Card>
+            <Link to="/admin/system-check">
+              <Button size="sm" className="bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/20 h-8 gap-1.5 text-xs">
+                <TestTube className="w-3.5 h-3.5" /> System Check
+              </Button>
+            </Link>
+          </div>
 
-        {/* Active Zones */}
-        <Card className="glass-card border-rose-500/20 bg-rose-500/5">
-          <CardContent className="p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">Zonen</h3>
-              <Radio className="w-5 h-5 text-rose-400" />
+          <div className="space-y-2.5">
+            {systemHealth.map((item, idx) => (
+              <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/20">
+                <div className="flex items-center gap-2.5">
+                  {item.ok
+                    ? <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
+                    : <AlertCircle className="w-4 h-4 text-yellow-400 flex-shrink-0" />
+                  }
+                  <span className="text-sm text-muted-foreground">{item.label}</span>
+                </div>
+                <span className={`text-sm font-semibold ${item.ok ? 'text-green-400' : 'text-yellow-400'}`}>
+                  {item.ok ? item.okText : item.failText}
+                </span>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Quick Actions */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="bento-panel border-border/20 p-5 space-y-3"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Plus className="w-5 h-5 text-primary" />
             </div>
-            <div className="text-3xl font-bold text-rose-400">{zones.length}</div>
-            <p className="text-xs text-muted-foreground">konfiguriert</p>
-            <Link to="/devices"><Button size="sm" className="w-full h-8 text-xs">Einrichten</Button></Link>
-          </CardContent>
-        </Card>
+            <div>
+              <h3 className="font-bold text-foreground">Quick Actions</h3>
+              <p className="text-xs text-muted-foreground">Direkt loslegen</p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {quickActions.map((action, idx) => {
+              const Icon = action.icon;
+              return (
+                <motion.div key={idx} whileTap={{ scale: 0.97 }}>
+                  <Link to={action.link}>
+                    <div className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-150 cursor-pointer ${action.color}`}>
+                      <Icon className="w-4 h-4 flex-shrink-0" />
+                      <span className="text-sm font-semibold">{action.label}</span>
+                      <ArrowRight className="w-3.5 h-3.5 ml-auto opacity-60" />
+                    </div>
+                  </Link>
+                </motion.div>
+              );
+            })}
+          </div>
+        </motion.div>
       </div>
     </div>
   );
