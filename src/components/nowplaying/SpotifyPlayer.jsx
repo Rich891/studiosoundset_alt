@@ -1,8 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Play, Pause, SkipForward, SkipBack, Volume2, Monitor, RefreshCw, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -14,6 +13,7 @@ export default function SpotifyPlayer({ provider }) {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isAuthed, setIsAuthed] = useState(null);
+  const volumeDebounceRef = useRef(null);
 
   const invoke = useCallback(async (action, extra = {}) => {
     return base44.functions.invoke('spotifyControl', { providerId: provider.id, action, ...extra });
@@ -64,13 +64,17 @@ export default function SpotifyPlayer({ provider }) {
     }
   };
 
-  const handleVolumeChange = async (val) => {
-    setVolume(val);
-    try {
-      await invoke('setVolume', { volume: val });
-    } catch (e) {
-      toast.error('Lautstärke konnte nicht gesetzt werden');
-    }
+  const handleVolumeChange = (val) => {
+    const num = Number(val);
+    setVolume(num);
+    if (volumeDebounceRef.current) clearTimeout(volumeDebounceRef.current);
+    volumeDebounceRef.current = setTimeout(async () => {
+      try {
+        await invoke('setVolume', { volume: num });
+      } catch (e) {
+        toast.error('Lautstärke konnte nicht gesetzt werden');
+      }
+    }, 300);
   };
 
   const handleTransfer = async (deviceId) => {
@@ -211,12 +215,21 @@ export default function SpotifyPlayer({ provider }) {
             {/* Volume */}
             <div className="flex items-center gap-3">
               <Volume2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-              <Slider
-                value={[volume]}
-                onValueChange={([v]) => handleVolumeChange(v)}
-                min={0} max={100}
-                className="flex-1"
-              />
+              <div className="flex-1 relative h-5 flex items-center">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={volume}
+                  onChange={e => handleVolumeChange(e.target.value)}
+                  className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                  style={{
+                    background: `linear-gradient(to right, hsl(var(--primary)) ${volume}%, hsl(var(--border)) ${volume}%)`,
+                    WebkitAppearance: 'none',
+                    touchAction: 'none',
+                  }}
+                />
+              </div>
               <span className="text-xs text-muted-foreground w-8 text-right">{volume}%</span>
             </div>
           </>
