@@ -20,12 +20,15 @@ async function syncPlayerStatus(state, playerUser) {
   
   try {
     const track = state.track_window?.current_track;
+    const contextUri = state.track_window?.current_context?.uri;
     const updateData = {
       isPlaying: !state.paused,
       progressMs: state.position || 0,
       volume: Math.round((state.device?.volume_percent || 0)),
       lastStatusUpdate: new Date().toISOString(),
       lastSeen: new Date().toISOString(),
+      isPaired: true, // Sync aktuativ - Player ist verbunden
+      isActive: true,
     };
     
     // Wenn Track abspielt: speichere Track-Details
@@ -36,6 +39,10 @@ async function syncPlayerStatus(state, playerUser) {
       updateData.currentTrackCoverUrl = track.album?.images?.[0]?.url || '';
       updateData.currentTrackUri = track.uri || '';
       updateData.currentTrackDuration = track.duration_ms || 0;
+    }
+    
+    if (contextUri) {
+      updateData.currentPlaylistUri = contextUri;
     }
     
     // Finde PlayerDevice via playerUser.id
@@ -159,16 +166,32 @@ export default function PlayerNew() {
         volume: volume,
       });
 
-      player.addListener('ready', ({ device_id }) => {
+      player.addListener('ready', async ({ device_id }) => {
         setDeviceId(device_id);
         setPlayerReady(true);
         setStatus('ready');
+        toast.success('Player bereit!');
+        
+        // Markiere Device als gekoppelt und aktiv
+        try {
+          const devices = await base44.entities.PlayerDevice.list();
+          const device = devices.find(d => d.userId === playerUser.id);
+          if (device) {
+            await base44.entities.PlayerDevice.update(device.id, {
+              isPaired: true,
+              isActive: true,
+              lastSeen: new Date().toISOString(),
+            });
+          }
+        } catch (e) {
+          console.error('Failed to mark device as paired:', e);
+        }
+        
         invoke('spotifyAccountControl', {
           action: 'transferPlayback',
           accountId: playerUser.spotifyAccountId,
           deviceId: device_id,
         }).catch(e => console.warn('Auto-transfer failed:', e));
-        toast.success('Player bereit!');
       });
 
       player.addListener('not_ready', () => {
@@ -249,6 +272,8 @@ export default function PlayerNew() {
       if (device) {
         await base44.entities.PlayerDevice.update(device.id, {
           volume: Math.round(v * 100),
+          isPaired: true,
+          isActive: true,
           lastSeen: new Date().toISOString(),
         });
       }
