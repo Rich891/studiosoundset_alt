@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClientInstance } from '@/lib/query-client';
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
@@ -23,6 +23,16 @@ import NotFound from './pages/NotFound';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, isAuthenticated } = useAuth();
+  const location = useLocation();
+
+  // SpotifyCallback NEVER gets blocked — Spotify redirects lose the session cookie
+  if (location.pathname === '/spotify-callback') {
+    return (
+      <Routes>
+        <Route path="/spotify-callback" element={<SpotifyCallback />} />
+      </Routes>
+    );
+  }
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
@@ -40,9 +50,7 @@ const AuthenticatedApp = () => {
     if (authError.type === 'auth_required') { navigateToLogin(); return null; }
   }
 
-  // SpotifyCallback is handled before auth check (see Routes below)
-  // If not authenticated and not on callback page, redirect to login
-  if (!isLoadingAuth && !isAuthenticated && window.location.pathname !== '/spotify-callback') {
+  if (!isAuthenticated) {
     navigateToLogin();
     return null;
   }
@@ -50,11 +58,6 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
-
-      {/* Spotify OAuth callback — MUST be outside auth gate, Spotify redirects lose session */}
-      <Route path="/spotify-callback" element={<SpotifyCallback />} />
-
-      {/* App with Layout */}
       <Route element={<AppLayout />}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/spotify-accounts" element={<SpotifyAccounts />} />
@@ -66,7 +69,6 @@ const AuthenticatedApp = () => {
         <Route path="/logs" element={<Logs />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
-
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
