@@ -97,16 +97,7 @@ Deno.serve(async (req) => {
 
   const { action, accountId } = body;
 
-  let base44;
-  try {
-    base44 = createClientFromRequest(req);
-    await base44.auth.me(); // validate user
-  } catch (e) {
-    // Allow getAuthUrl without auth
-    if (action !== 'getAuthUrl') {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
+  const base44 = createClientFromRequest(req);
 
   // ── GET AUTH URL ────────────────────────────────────────────────────────────
   if (action === 'getAuthUrl') {
