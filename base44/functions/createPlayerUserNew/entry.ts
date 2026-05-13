@@ -24,10 +24,10 @@ Deno.serve(async (req) => {
     const email = `p${shortId}@studio`;
 
     // Erstelle PlayerUser
-    const result = await base44.asServiceRole.entities.PlayerUser.create({
+    const playerUser = await base44.asServiceRole.entities.PlayerUser.create({
       deviceId,
       email,
-      passwordHash: password, // Für jetzt im Klartext (in Produktion: bcrypt)
+      passwordHash: password,
       deviceName,
       spotifyAccountId,
       zoneId: zoneId || '',
@@ -35,15 +35,51 @@ Deno.serve(async (req) => {
       createdAt: new Date().toISOString(),
     });
 
+    // Erstelle oder aktualisiere PlayerDevice und verknüpfe mit PlayerUser
+    const playerDevices = await base44.asServiceRole.entities.PlayerDevice.filter({ 
+      spotifyAccountId, 
+      name: deviceName 
+    });
+    
+    let playerDevice;
+    if (playerDevices.length > 0) {
+      // Update bestehenden Device
+      playerDevice = playerDevices[0];
+      await base44.asServiceRole.entities.PlayerDevice.update(playerDevice.id, {
+        userId: playerUser.id,
+        isPaired: true,
+        pairedAt: new Date().toISOString(),
+        isActive: true,
+      });
+    } else {
+      // Erstelle neuen Device
+      playerDevice = await base44.asServiceRole.entities.PlayerDevice.create({
+        name: deviceName,
+        spotifyAccountId,
+        zoneId: zoneId || '',
+        userId: playerUser.id,
+        isPaired: true,
+        pairedAt: new Date().toISOString(),
+        isActive: true,
+        pairingToken: Math.random().toString(36).substr(2, 10),
+        pairingExpiresAt: new Date(Date.now() + 15 * 60000).toISOString(),
+      });
+    }
+
     return Response.json({
       success: true,
       playerUser: {
-        id: result.id,
+        id: playerUser.id,
         deviceId,
         email,
         deviceName,
         spotifyAccountId,
         zoneId,
+      },
+      playerDevice: {
+        id: playerDevice.id,
+        userId: playerUser.id,
+        isPaired: true,
       },
     });
   } catch (error) {

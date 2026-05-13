@@ -27,11 +27,11 @@ async function syncPlayerStatus(state, playerUser) {
       volume: Math.round((state.device?.volume_percent || 0)),
       lastStatusUpdate: new Date().toISOString(),
       lastSeen: new Date().toISOString(),
-      isPaired: true, // Sync aktuativ - Player ist verbunden
+      isPaired: true,
       isActive: true,
+      userId: playerUser.id, // KRITISCH: userId muss PlayerUser.id sein!
     };
     
-    // Wenn Track abspielt: speichere Track-Details
     if (track) {
       updateData.currentTrackName = track.name || '';
       updateData.currentTrackArtist = track.artists?.[0]?.name || '';
@@ -180,6 +180,7 @@ export default function PlayerNew() {
             await base44.entities.PlayerDevice.update(device.id, {
               isPaired: true,
               isActive: true,
+              userId: playerUser.id, // Stelle sicher dass userId korrekt ist
               lastSeen: new Date().toISOString(),
             });
           }
@@ -274,6 +275,7 @@ export default function PlayerNew() {
           volume: Math.round(v * 100),
           isPaired: true,
           isActive: true,
+          userId: playerUser.id,
           lastSeen: new Date().toISOString(),
         });
       }

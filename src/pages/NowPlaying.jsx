@@ -248,13 +248,11 @@ function PlayerDeviceCard({ device, account, playlists }) {
 }
 
 export default function NowPlaying() {
-  const { data: devices = [] } = useQuery({
-    queryKey: ['playerDevices'],
-    queryFn: async () => {
-      const allDevices = await base44.entities.PlayerDevice.list();
-      return allDevices.filter(d => d.isPaired && d.isActive);
-    },
-    refetchInterval: 15000, // Auto-refresh alle 15 Sekunden
+  // Lade PlayerUser statt PlayerDevice
+  const { data: playerUsers = [] } = useQuery({
+    queryKey: ['playerUsers'],
+    queryFn: () => base44.entities.PlayerUser.list('-lastLoginAt'),
+    refetchInterval: 15000,
   });
 
   const { data: accounts = [] } = useQuery({
@@ -265,6 +263,23 @@ export default function NowPlaying() {
   const { data: playlists = [] } = useQuery({
     queryKey: ['playlists'],
     queryFn: () => base44.entities.Playlist.list(),
+  });
+
+  // Lade PlayerDevices für Status-Updates
+  const { data: playerDevices = [] } = useQuery({
+    queryKey: ['playerDevices'],
+    queryFn: () => base44.entities.PlayerDevice.list(),
+    refetchInterval: 15000,
+  });
+
+  // Mape PlayerUser zu PlayerDevice für Status-Anzeige
+  const devices = playerUsers.map(pu => {
+    const device = playerDevices.find(pd => pd.userId === pu.id);
+    return {
+      ...device, // Status von PlayerDevice
+      ...pu,     // Fallback auf PlayerUser wenn Device nicht vorhanden
+      id: pu.id, // Nutze PlayerUser.id als Primary Key
+    };
   });
 
   return (
