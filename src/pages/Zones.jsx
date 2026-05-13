@@ -35,7 +35,7 @@ const STATUS_CFG = {
 
 const ZONE_COLORS = ['#6366f1', '#22d3ee', '#f43f5e', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 
-const defaultForm = { name: '', description: '', color: '#6366f1', deviceType: 'other', spotifyAccountId: '', defaultVolume: 50, minVolume: 0, maxVolume: 100 };
+const defaultForm = { name: '', description: '', color: '#6366f1', providerId: '', defaultVolume: 50, minVolume: 0, maxVolume: 100 };
 
 export default function Zones() {
   const [showForm, setShowForm] = useState(false);
@@ -45,16 +45,16 @@ export default function Zones() {
   const queryClient = useQueryClient();
 
   const { data: zones = [], isLoading } = useQuery({ queryKey: ['zones'], queryFn: () => base44.entities.Zone.list() });
-  const { data: accounts = [] } = useQuery({ queryKey: ['spotifyAccounts'], queryFn: () => base44.entities.SpotifyAccount.list() });
+  const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: () => base44.entities.Provider.list() });
 
   const saveMutation = useMutation({
     mutationFn: (data) => editZone
-      ? base44.entities.Zone.update(editZone.id, data)
-      : base44.entities.Zone.create(data),
+      ? base44.functions.invoke('zonePlayerControl', { action: 'updateZone', zoneId: editZone.id, data })
+      : base44.functions.invoke('zonePlayerControl', { action: 'createZone', data }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['zones'] }); toast.success(editZone ? 'Zone aktualisiert.' : 'Zone erstellt.'); closeForm(); },
   });
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.Zone.delete(id),
+    mutationFn: (id) => base44.functions.invoke('zonePlayerControl', { action: 'deleteZone', zoneId: id }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['zones'] }); toast.success('Zone gelöscht.'); },
   });
 
@@ -93,14 +93,12 @@ export default function Zones() {
         <div className="space-y-4">
           <AnimatePresence>
             {zones.map((zone, i) => {
-              const cfg = STATUS_CFG[zone.currentStatus] || STATUS_CFG.untested;
-              const account = accounts.find(a => a.id === zone.spotifyAccountId);
-              const DevTypeIcon = DEVICE_TYPES.find(d => d.value === zone.deviceType)?.icon || Monitor;
+              const provider = providers.find(p => p.id === zone.providerId);
               const isTestOpen = testingZoneId === zone.id;
 
               return (
                 <motion.div key={zone.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-                  <div className={`bento-panel border ${cfg.bg} overflow-hidden`}>
+                  <div className={`bento-panel border border-border/50 overflow-hidden`}>
                     <div className="p-5 flex items-center gap-4 flex-wrap">
                       <div className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center" style={{ background: zone.color + '22', border: `1px solid ${zone.color}44` }}>
                         <div className="w-3 h-3 rounded-full" style={{ background: zone.color }} />
@@ -108,39 +106,27 @@ export default function Zones() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="font-bold text-lg">{zone.name}</p>
-                          <span className={`text-xs font-semibold ${cfg.color} px-2 py-0.5 rounded-full border ${cfg.bg}`}>{cfg.label}</span>
+                          {zone.isActive ? <span className="text-xs font-semibold text-green-400">● Aktiv</span> : <span className="text-xs font-semibold text-muted-foreground">● Inaktiv</span>}
                         </div>
                         <div className="flex items-center gap-3 mt-1 flex-wrap">
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <DevTypeIcon className="w-3 h-3" />{DEVICE_TYPES.find(d => d.value === zone.deviceType)?.label || 'Gerät'}
-                          </span>
-                          {account ? (
+                          {provider ? (
                             <span className="text-xs text-muted-foreground flex items-center gap-1">
-                              <Music2 className="w-3 h-3" />{account.displayName}
-                              {account.authStatus === 'connected' ? ' ✓' : ' ✗'}
+                              <Music2 className="w-3 h-3" />{provider.name}
+                              {provider.status === 'connected' ? ' ✓' : ' ✗'}
                             </span>
                           ) : (
-                            <span className="text-xs text-yellow-400">⚠ Kein Spotify Account zugewiesen</span>
+                            <span className="text-xs text-yellow-400">⚠ Kein Provider zugewiesen</span>
                           )}
                           <span className="text-xs text-muted-foreground">🔊 {zone.defaultVolume}%</span>
                         </div>
-                        {zone.lastError && <p className="text-xs text-red-400 mt-1">{zone.lastError}</p>}
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setTestingZoneId(isTestOpen ? null : zone.id)}>
-                          <FlaskConical className="w-3.5 h-3.5" /> {isTestOpen ? 'Tests schließen' : 'Testen'}
-                        </Button>
                         <Button variant="ghost" size="sm" onClick={() => openEdit(zone)}>Bearbeiten</Button>
                         <Button variant="ghost" size="sm" className="text-destructive/70 hover:text-destructive" onClick={() => deleteMutation.mutate(zone.id)}>
                           <XCircle className="w-4 h-4" />
                         </Button>
                       </div>
                     </div>
-                    {isTestOpen && (
-                      <div className="border-t border-border/30">
-                        <ZoneTestPanel zone={zone} account={account} />
-                      </div>
-                    )}
                   </div>
                 </motion.div>
               );
@@ -164,13 +150,7 @@ export default function Zones() {
               <Label className="text-sm font-semibold mb-2 block">Beschreibung</Label>
               <Input value={formData.description || ''} onChange={e => upd('description', e.target.value)} placeholder="Optional" className="h-11 bg-muted/30" />
             </div>
-            <div>
-              <Label className="text-sm font-semibold mb-2 block">Gerätetyp</Label>
-              <Select value={formData.deviceType} onValueChange={v => upd('deviceType', v)}>
-                <SelectTrigger className="h-11 bg-muted/30"><SelectValue /></SelectTrigger>
-                <SelectContent>{DEVICE_TYPES.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
+
             <div>
               <Label className="text-sm font-semibold mb-2 block">Farbe</Label>
               <div className="flex gap-2 flex-wrap">
@@ -180,12 +160,11 @@ export default function Zones() {
               </div>
             </div>
             <div>
-              <Label className="text-sm font-semibold mb-2 block">Spotify Account</Label>
-              <Select value={formData.spotifyAccountId || 'none'} onValueChange={v => upd('spotifyAccountId', v === 'none' ? '' : v)}>
-                <SelectTrigger className="h-11 bg-muted/30"><SelectValue placeholder="Account wählen" /></SelectTrigger>
+              <Label className="text-sm font-semibold mb-2 block">Spotify Provider *</Label>
+              <Select value={formData.providerId || 'none'} onValueChange={v => upd('providerId', v === 'none' ? '' : v)}>
+                <SelectTrigger className="h-11 bg-muted/30"><SelectValue placeholder="Provider wählen" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">— Kein Account —</SelectItem>
-                  {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.displayName} {a.authStatus === 'connected' ? '✓' : '(nicht verbunden)'}</SelectItem>)}
+                  {providers.map(p => <SelectItem key={p.id} value={p.id}>{p.name} {p.status === 'connected' ? '✓' : '(nicht verbunden)'}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -208,7 +187,7 @@ export default function Zones() {
             </div>
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={closeForm}>Abbrechen</Button>
-              <Button className="flex-1 bg-primary hover:bg-primary/90 font-bold" disabled={!formData.name.trim() || saveMutation.isPending} onClick={() => saveMutation.mutate(formData)}>
+              <Button className="flex-1 bg-primary hover:bg-primary/90 font-bold" disabled={!formData.name.trim() || !formData.providerId || saveMutation.isPending} onClick={() => saveMutation.mutate(formData)}>
                 {saveMutation.isPending ? 'Speichern...' : 'Speichern'}
               </Button>
             </div>
