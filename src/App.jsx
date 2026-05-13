@@ -26,15 +26,17 @@ import AddPlayerDevice from './pages/AddPlayerDevice';
 import PlayerPairing from './pages/PlayerPairing';
 import PlayerUsers from './pages/PlayerUsers';
 import ManagePlayerDevices from './pages/ManagePlayerDevices';
+import PlayerLoginIndex from './pages/PlayerLoginIndex';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, isAuthenticated } = useAuth();
   const location = useLocation();
 
   // Public routes that don't need admin auth
-  if (location.pathname === '/spotify-callback' || location.pathname === '/player-pairing' || location.pathname === '/player-new') {
+  if (location.pathname === '/' || location.pathname === '/spotify-callback' || location.pathname === '/player-pairing' || location.pathname === '/player-new') {
     return (
       <Routes>
+        <Route path="/" element={<PlayerLoginIndex />} />
         <Route path="/spotify-callback" element={<SpotifyCallback />} />
         <Route path="/player-pairing" element={<PlayerPairing />} />
         <Route path="/player-new" element={<PlayerNew />} />
