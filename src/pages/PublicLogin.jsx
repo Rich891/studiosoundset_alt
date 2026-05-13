@@ -10,7 +10,7 @@ export default function PublicLogin() {
 
   const handleAdminLogin = async () => {
     setLoading(true);
-    await base44.auth.redirectToLogin();
+    await base44.auth.redirectToLogin('/dashboard');
   };
 
   const handlePlayerLogin = () => {
