@@ -14,6 +14,42 @@ import { Link } from 'react-router-dom';
 
 const invoke = (fn, payload) => base44.functions.invoke(fn, payload);
 
+// Sync player state to PlayerDevice
+async function syncPlayerStatus(state, playerUser) {
+  if (!state || !playerUser) return;
+  
+  try {
+    const track = state.track_window?.current_track;
+    const updateData = {
+      isPlaying: !state.paused,
+      progressMs: state.position || 0,
+      volume: Math.round((state.device?.volume_percent || 0)),
+      lastStatusUpdate: new Date().toISOString(),
+      lastSeen: new Date().toISOString(),
+    };
+    
+    // Wenn Track abspielt: speichere Track-Details
+    if (track) {
+      updateData.currentTrackName = track.name || '';
+      updateData.currentTrackArtist = track.artists?.[0]?.name || '';
+      updateData.currentTrackAlbum = track.album?.name || '';
+      updateData.currentTrackCoverUrl = track.album?.images?.[0]?.url || '';
+      updateData.currentTrackUri = track.uri || '';
+      updateData.currentTrackDuration = track.duration_ms || 0;
+    }
+    
+    // Finde PlayerDevice via playerUser.id
+    const devices = await base44.entities.PlayerDevice.list();
+    const device = devices.find(d => d.userId === playerUser.id);
+    
+    if (device) {
+      await base44.entities.PlayerDevice.update(device.id, updateData);
+    }
+  } catch (error) {
+    console.error('Failed to sync player status:', error);
+  }
+}
+
 function formatMs(ms) {
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -143,6 +179,8 @@ export default function PlayerNew() {
 
       player.addListener('player_state_changed', (state) => {
         setPlayerState(state);
+        // Sync status to PlayerDevice
+        syncPlayerStatus(state, playerUser);
       });
 
       player.addListener('initialization_error', ({ message }) => {
@@ -179,14 +217,44 @@ export default function PlayerNew() {
   }, [playerUser]);
 
   // Controls
-  const togglePlay = () => playerRef.current?.togglePlay();
-  const nextTrack = () => playerRef.current?.nextTrack();
-  const prevTrack = () => playerRef.current?.previousTrack();
+  const togglePlay = async () => {
+    playerRef.current?.togglePlay();
+    await new Promise(r => setTimeout(r, 500));
+    const state = playerRef.current?.getState?.();
+    if (state) await syncPlayerStatus(state, playerUser);
+  };
+  
+  const nextTrack = async () => {
+    playerRef.current?.nextTrack();
+    await new Promise(r => setTimeout(r, 500));
+    const state = playerRef.current?.getState?.();
+    if (state) await syncPlayerStatus(state, playerUser);
+  };
+  
+  const prevTrack = async () => {
+    playerRef.current?.previousTrack();
+    await new Promise(r => setTimeout(r, 500));
+    const state = playerRef.current?.getState?.();
+    if (state) await syncPlayerStatus(state, playerUser);
+  };
 
   const handleVolume = async (val) => {
     const v = Number(val) / 100;
     setVolume(v);
     await playerRef.current?.setVolume(v);
+    // Sync volume to PlayerDevice
+    try {
+      const devices = await base44.entities.PlayerDevice.list();
+      const device = devices.find(d => d.userId === playerUser.id);
+      if (device) {
+        await base44.entities.PlayerDevice.update(device.id, {
+          volume: Math.round(v * 100),
+          lastSeen: new Date().toISOString(),
+        });
+      }
+    } catch (e) {
+      console.error('Volume sync failed:', e);
+    }
   };
 
   const playPlaylist = async (pl) => {
@@ -215,6 +283,10 @@ export default function PlayerNew() {
       if (res.data?.success) {
         toast.success(`▶ "${pl.name}"`);
         setShowPlaylists(false);
+        // Sync status nach Playlist-Start
+        await new Promise(r => setTimeout(r, 800));
+        const state = playerRef.current?.getState?.();
+        if (state) await syncPlayerStatus(state, playerUser);
       } else {
         toast.error(res.data?.error || 'Starten fehlgeschlagen.');
       }
