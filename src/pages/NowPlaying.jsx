@@ -104,7 +104,14 @@ function ZonePlayer({ zone, account, playlists }) {
     if (volDebounce.current) clearTimeout(volDebounce.current);
     volDebounce.current = setTimeout(async () => {
       try {
-        const res = await invoke('spotifyAccountControl', { action: 'setVolume', accountId: account.id, volume: num, deviceId: playback?.device?.id });
+        const activeDeviceId = playback?.device?.id;
+        // Wenn kein aktives Gerät → erst Transfer zum ersten sichtbaren Gerät
+        if (!activeDeviceId && devices.length > 0) {
+          await invoke('spotifyAccountControl', { action: 'transferPlayback', accountId: account.id, deviceId: devices[0].id });
+          await new Promise(r => setTimeout(r, 800));
+        }
+        const targetId = activeDeviceId || devices[0]?.id;
+        const res = await invoke('spotifyAccountControl', { action: 'setVolume', accountId: account.id, volume: num, deviceId: targetId });
         if (res.data?.error) toast.error(res.data.error);
       } catch (e) { toast.error(e.message); }
     }, 400);
