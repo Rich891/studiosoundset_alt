@@ -157,14 +157,11 @@ export default function Playlists() {
     queryKey: ['spotifyAccounts'],
     queryFn: () => base44.entities.SpotifyAccount.list(),
   });
-  const { data: zones = [] } = useQuery({ queryKey: ['zones'], queryFn: () => base44.entities.Zone.list() });
 
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.Playlist.delete(id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['playlists'] }); toast.success('Playlist entfernt.'); },
   });
-
-  const { data: zonesAll = [] } = useQuery({ queryKey: ['zones'], queryFn: () => base44.entities.Zone.list() });
 
   const handlePlay = async (pl) => {
     const account = accounts.find(a => a.id === pl.spotifyAccountId);
@@ -172,16 +169,11 @@ export default function Playlists() {
     if (account.authStatus !== 'connected') { toast.error('Spotify Account nicht verbunden.'); return; }
     if (!pl.providerPlaylistUri) { toast.error('Keine Spotify URI gespeichert.'); return; }
 
-    // Find target device for this account's zone
-    const zone = zonesAll.find(z => z.spotifyAccountId === account.id);
-    const targetDeviceId = zone?.targetDeviceId || undefined;
-
     try {
       const res = await invoke('spotifyAccountControl', {
         action: 'playPlaylist',
         accountId: account.id,
         contextUri: pl.providerPlaylistUri,
-        deviceId: targetDeviceId,
       });
       if (res.data?.success) toast.success(`"${pl.name}" wird abgespielt.`);
       else toast.error(res.data?.error || 'Fehler beim Abspielen.');
@@ -290,7 +282,6 @@ export default function Playlists() {
           <AnimatePresence>
             {filtered.map((pl, i) => {
               const account = accounts.find(a => a.id === pl.spotifyAccountId);
-              const zone = zones.find(z => z.id === pl.zoneId);
               const syncCfg = SYNC_CFG[pl.syncStatus] || SYNC_CFG.not_imported;
               const tracksOk = pl.importedTracks > 0 && pl.importedTracks >= pl.totalTracks * 0.9;
 

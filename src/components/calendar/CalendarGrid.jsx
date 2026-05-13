@@ -39,7 +39,7 @@ function blockHeightPx(startTime, endTime) {
   return ((eh + em / 60) - (sh + sm / 60)) * PX_PER_HOUR;
 }
 
-export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDelete }) {
+export default function CalendarGrid({ blocks, playerDevices, onOpenForm, onEdit, onDelete }) {
   const [drag, setDrag] = useState(null); // { dayIdx, startPx, currentPx }
   const [draggingBlock, setDraggingBlock] = useState(null); // { block, offsetPx, dayIdx }
   const columnRefs = useRef({});
@@ -196,8 +196,8 @@ export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDele
                   {/* Blocks */}
                   <AnimatePresence>
                     {dayBlocks.map(block => {
-                      const zone = zones.find(z => z.id === block.zoneId);
-                      const color = zone?.color || '#7C3AED';
+                      const device = playerDevices.find(d => d.id === block.playerDeviceId);
+                      const color = '#7C3AED';
                       const topPx = timeToPx(block.startTime);
                       const heightPx = Math.max(28, blockHeightPx(block.startTime, block.endTime));
                       const isBeingDragged = draggingBlock?.block?.id === block.id;
@@ -235,7 +235,7 @@ export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDele
                           <div className="h-full flex flex-col justify-between p-1.5 overflow-hidden">
                             <div className="overflow-hidden">
                               <p className="text-[11px] font-bold truncate leading-tight" style={{ color }}>
-                                {block.title || zone?.name || 'Block'}
+                                {block.title || device?.name || 'Block'}
                               </p>
                               {heightPx > 40 && (
                                 <p className="text-[10px] text-white/50 leading-tight">
@@ -245,11 +245,11 @@ export default function CalendarGrid({ blocks, zones, onOpenForm, onEdit, onDele
                             </div>
                             {heightPx > 55 && (
                               <div className="flex items-center gap-1">
-                                {block.volumeRampEnabled
+                                {block.rampEnabled
                                   ? <span className="text-[10px] font-semibold" style={{ color }}>{block.startVolume}%→{block.endVolume}%</span>
                                   : <span className="text-[10px] font-semibold" style={{ color }}>{block.baseVolume}%</span>
                                 }
-                                {block.volumeRampEnabled && <TrendingUp className="w-2.5 h-2.5" style={{ color }} />}
+                                {block.rampEnabled && <TrendingUp className="w-2.5 h-2.5" style={{ color }} />}
                               </div>
                             )}
                           </div>
