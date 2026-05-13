@@ -93,7 +93,7 @@ function PlayerDeviceCard({ device, account, playlists }) {
     await sendCommand('setVolume', { volume: num });
   };
 
-  const isOnline = device.lastSeen && (Date.now() - new Date(device.lastSeen).getTime()) < 5 * 60 * 1000;
+  const isOnline = device.lastSeen && (Date.now() - new Date(device.lastSeen).getTime()) < 10 * 1000; // 10 Sekunden (5s Heartbeat + Buffer)
   const dur = device.currentTrackDuration || 1;
   const pct = Math.min(100, Math.round((localProgress / dur) * 100));
 

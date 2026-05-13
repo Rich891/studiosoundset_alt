@@ -240,6 +240,22 @@ export default function PlayerNew() {
     };
   }, [playerUser]);
 
+  // Heartbeat: Update lastSeen alle 5 Sekunden wenn Player aktiv
+  useEffect(() => {
+    if (!playerReady || !playerUser) return;
+    
+    const interval = setInterval(async () => {
+      try {
+        const state = playerRef.current?.getState?.();
+        if (state) await syncPlayerStatus(state, playerUser);
+      } catch (e) {
+        console.error('Heartbeat sync failed:', e);
+      }
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [playerReady, playerUser]);
+
   // Controls
   const togglePlay = async () => {
     playerRef.current?.togglePlay();
