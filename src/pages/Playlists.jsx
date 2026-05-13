@@ -60,7 +60,7 @@ function ImportModal({ account, onImport, onClose }) {
         description: pl.description || '',
         owner: pl.owner?.display_name || '',
         coverUrl: pl.images?.[0]?.url || '',
-        totalTracks: pl.tracks?.total || 0,
+        totalTracks: pl.tracks?.total ?? pl.items?.total ?? 0,
         syncStatus: 'pending',
       };
       if (existing.length) {
@@ -81,7 +81,12 @@ function ImportModal({ account, onImport, onClose }) {
         toast.success(`"${pl.name}" importiert: ${trackRes.data.imported} Songs.`);
         onImport();
       } else {
-        toast.error(trackRes.data?.error || 'Track-Import fehlgeschlagen.');
+        const err = trackRes.data?.error || 'Track-Import fehlgeschlagen.';
+        if (err.includes('FORBIDDEN')) {
+          toast.error('Kein Zugriff auf diese Playlist. Verbinde den Spotify Account neu (Scopes fehlen).');
+        } else {
+          toast.error(err);
+        }
       }
     } catch (e) {
       toast.error(e.message);

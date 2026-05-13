@@ -75,7 +75,8 @@ async function spotifyFetch(accessToken, method, path, body) {
   if (res.status === 401) throw new Error('TOKEN_EXPIRED');
   if (res.status === 403) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(`FORBIDDEN: ${err?.error?.message || 'Premium required or scope missing'}`);
+    const msg = err?.error?.message || 'Premium required or scope missing';
+    throw new Error(`FORBIDDEN: ${msg}`);
   }
   if (res.status === 404) throw new Error('NOT_FOUND');
   if (res.status === 429) throw new Error('RATE_LIMITED');
@@ -352,8 +353,9 @@ Deno.serve(async (req) => {
       let hasMore = true;
 
       while (hasMore) {
+        // No `fields` parameter — avoids 403 Forbidden on collaborative/radio playlists
         const data = await spotifyFetchWithRefresh(base44, accountId, tokens, 'GET',
-          `/playlists/${spotifyPlaylistId}/tracks?limit=50&offset=${offset}&fields=items(track(id,uri,name,artists,album,duration_ms,explicit)),total,next`
+          `/playlists/${spotifyPlaylistId}/tracks?limit=50&offset=${offset}`
         );
         const items = data.items || [];
         for (let i = 0; i < items.length; i++) {
