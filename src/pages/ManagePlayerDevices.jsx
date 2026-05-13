@@ -106,7 +106,10 @@ export default function ManagePlayerDevices() {
       toast.error('Alle Felder erforderlich');
       return;
     }
-    createMutation.mutate(formData);
+    createMutation.mutate({
+      ...formData,
+      zoneId: formData.zoneId || ''
+    });
   };
 
   const copyToClipboard = (text) => {
