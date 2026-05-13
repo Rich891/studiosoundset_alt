@@ -10,7 +10,6 @@ const NAV = [
   { path: '/dashboard',         label: 'Dashboard',           icon: LayoutDashboard },
   { path: '/player',            label: '▶ Browser Player',    icon: Headphones,  highlight: true },
   { path: '/manage-players',    label: '⚙ Player verwalten',  icon: Plus,        highlight: true },
-  { path: '/player-users',      label: 'Player-Users',        icon: Plus },
   { path: '/spotify-accounts',  label: 'Spotify Accounts',    icon: Music2 },
   { path: '/zones',             label: 'Zonen',               icon: MapPin },
   { path: '/now-playing',       label: 'Now Playing',         icon: Radio },
@@ -88,7 +87,7 @@ export default function Sidebar() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[10px] text-red-400 font-semibold">✗ Nicht eingeloggt</p>
-              <button onClick={() => base44.auth.redirectToLogin()} className="text-[9px] text-blue-400 underline">Einloggen</button>
+              <button onClick={() => base44.auth.redirectToLogin('/dashboard')} className="text-[9px] text-blue-400 underline">Einloggen</button>
             </div>
           </div>
         )}

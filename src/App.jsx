@@ -25,7 +25,6 @@ import Player from './pages/Player';
 import PlayerNew from './pages/PlayerNew';
 import AddPlayerDevice from './pages/AddPlayerDevice';
 import PlayerPairing from './pages/PlayerPairing';
-import PlayerUsers from './pages/PlayerUsers';
 import ManagePlayerDevices from './pages/ManagePlayerDevices';
 import PlayerLoginIndex from './pages/PlayerLoginIndex';
 
@@ -86,7 +85,6 @@ const AuthenticatedApp = () => {
         <Route path="/settings" element={<Settings />} />
         <Route path="/player" element={<Player />} />
         <Route path="/add-player-device" element={<AddPlayerDevice />} />
-        <Route path="/player-users" element={<PlayerUsers />} />
         <Route path="/manage-players" element={<ManagePlayerDevices />} />
       </Route>
       <Route path="*" element={<NotFound />} />
