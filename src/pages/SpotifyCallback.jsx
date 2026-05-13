@@ -36,7 +36,7 @@ export default function SpotifyCallback() {
           if (acc) setAccountName(acc.displayName);
         } catch {}
 
-        const redirectUri = `${window.location.origin}/spotify-callback`;
+        const redirectUri = 'https://fit-sound-flow.base44.app/spotify-callback';
         const res = await base44.functions.invoke('spotifyAccountControl', {
           action: 'exchange',
           code,
