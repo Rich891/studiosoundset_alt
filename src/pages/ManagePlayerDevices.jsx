@@ -46,17 +46,17 @@ export default function ManagePlayerDevices() {
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [qrData, setQrData] = useState({ email: '', password: '', deviceName: '' });
   const [formData, setFormData] = useState({
-    deviceName: '',
-    spotifyAccountId: '',
+    name: '',
+    providerId: '',
     zoneId: '',
-    password: '',
+    passwordHash: '',
   });
   const [testRunning, setTestRunning] = useState({});
   const [testResults, setTestResults] = useState({});
 
   const { data: playerUsers = [] } = useQuery({
     queryKey: ['playerUsers'],
-    queryFn: () => base44.entities.PlayerUser.list('-createdAt'),
+    queryFn: () => base44.entities.Player.list('-updated_date'),
   });
 
   const { data: spotifyAccounts = [] } = useQuery({
@@ -80,13 +80,13 @@ export default function ManagePlayerDevices() {
       toast.success('Player erstellt!');
       // QR-Modal mit den Daten öffnen
       setQrData({
-        email: player.email,
-        password: formData.password, // Das ursprüngliche Passwort (nicht gehashed)
-        deviceName: player.deviceName
-      });
+         email: player.email,
+         password: formData.passwordHash,
+         deviceName: player.name
+       });
       setQrModalOpen(true);
       setShowDialog(false);
-      setFormData({ deviceName: '', spotifyAccountId: '', zoneId: '', password: '' });
+      setFormData({ name: '', providerId: '', zoneId: '', passwordHash: '' });
     },
     onError: (err) => {
       toast.error(err.message);
@@ -94,7 +94,7 @@ export default function ManagePlayerDevices() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.PlayerUser.delete(id),
+    mutationFn: (id) => base44.entities.Player.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['playerUsers'] });
       toast.success('Player gelöscht');
@@ -102,7 +102,7 @@ export default function ManagePlayerDevices() {
   });
 
   const handleCreate = async () => {
-    if (!formData.deviceName || !formData.spotifyAccountId || !formData.password) {
+    if (!formData.name || !formData.providerId || !formData.passwordHash) {
       toast.error('Alle Felder erforderlich');
       return;
     }
@@ -120,10 +120,10 @@ export default function ManagePlayerDevices() {
     for (let i = 0; i < 8; i++) {
       pwd += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    setFormData({ ...formData, password: pwd });
+    setFormData({ ...formData, passwordHash: pwd });
   };
 
-  const getAccountName = (id) => spotifyAccounts.find(a => a.id === id)?.displayName || id;
+  const getAccountName = (id) => spotifyAccounts.find(a => a.id === id)?.name || id;
   const getZoneName = (id) => zones.find(z => z.id === id)?.name || id;
 
   const handleRunTest = async (deviceId) => {
@@ -177,8 +177,8 @@ export default function ManagePlayerDevices() {
           playerUsers.map((player, idx) => {
             const status = connectionStatus(player);
             const StatusIcon = status.icon;
-            const account = spotifyAccounts.find(a => a.id === player.spotifyAccountId);
-            const zone = zones.find(z => z.id === player.zoneId);
+            const account = spotifyAccounts.find(a => a.id === player.providerId);
+             const zone = zones.find(z => z.id === player.zoneId);
             const testRes = testResults[player.id];
             
             return (
@@ -187,7 +187,7 @@ export default function ManagePlayerDevices() {
                   {/* Header: Name + Status */}
                   <div className="flex items-start justify-between">
                     <div>
-                      <h3 className="text-xl font-black">{player.deviceName}</h3>
+                       <h3 className="text-xl font-black">{player.name}</h3>
                       <div className="flex items-center gap-2 mt-1">
                         <StatusIcon className={`w-3.5 h-3.5 ${status.color}`} />
                         <span className={`text-xs font-semibold ${status.color}`}>{status.label}</span>
@@ -317,9 +317,9 @@ export default function ManagePlayerDevices() {
               </label>
               <Input
                 placeholder="z.B. Tennishalle Süd"
-                value={formData.deviceName}
+                value={formData.name}
                 onChange={(e) =>
-                  setFormData({ ...formData, deviceName: e.target.value })
+                  setFormData({ ...formData, name: e.target.value })
                 }
               />
             </div>
@@ -329,9 +329,9 @@ export default function ManagePlayerDevices() {
                 Spotify Account
               </label>
               <Select
-                value={formData.spotifyAccountId}
+                value={formData.providerId}
                 onValueChange={(value) =>
-                  setFormData({ ...formData, spotifyAccountId: value })
+                  setFormData({ ...formData, providerId: value })
                 }
               >
                 <SelectTrigger>
@@ -383,9 +383,9 @@ export default function ManagePlayerDevices() {
                 <Input
                   type="text"
                   placeholder="z.B. ABC12345"
-                  value={formData.password}
+                  value={formData.passwordHash}
                   onChange={(e) =>
-                    setFormData({ ...formData, password: e.target.value })
+                    setFormData({ ...formData, passwordHash: e.target.value })
                   }
                 />
                 <Button

@@ -23,63 +23,29 @@ Deno.serve(async (req) => {
     // Generiere kurze Email
     const email = `p${shortId}@studio`;
 
-    // Erstelle PlayerUser
-    const playerUser = await base44.asServiceRole.entities.PlayerUser.create({
+    // Erstelle Player
+    const player = await base44.asServiceRole.entities.Player.create({
       deviceId,
       email,
       passwordHash: password,
-      deviceName,
-      spotifyAccountId,
+      name: deviceName,
       zoneId: zoneId || '',
       isActive: true,
-      createdAt: new Date().toISOString(),
+      isPaired: true,
+      pairedAt: new Date().toISOString(),
+      pairingToken: Math.random().toString(36).substr(2, 10),
+      pairingExpiresAt: new Date(Date.now() + 15 * 60000).toISOString(),
     });
-
-    // Erstelle oder aktualisiere PlayerDevice und verknüpfe mit PlayerUser
-    const playerDevices = await base44.asServiceRole.entities.PlayerDevice.filter({ 
-      spotifyAccountId, 
-      name: deviceName 
-    });
-    
-    let playerDevice;
-    if (playerDevices.length > 0) {
-      // Update bestehenden Device
-      playerDevice = playerDevices[0];
-      await base44.asServiceRole.entities.PlayerDevice.update(playerDevice.id, {
-        userId: playerUser.id,
-        isPaired: true,
-        pairedAt: new Date().toISOString(),
-        isActive: true,
-      });
-    } else {
-      // Erstelle neuen Device
-      playerDevice = await base44.asServiceRole.entities.PlayerDevice.create({
-        name: deviceName,
-        spotifyAccountId,
-        zoneId: zoneId || '',
-        userId: playerUser.id,
-        isPaired: true,
-        pairedAt: new Date().toISOString(),
-        isActive: true,
-        pairingToken: Math.random().toString(36).substr(2, 10),
-        pairingExpiresAt: new Date(Date.now() + 15 * 60000).toISOString(),
-      });
-    }
 
     return Response.json({
       success: true,
       playerUser: {
-        id: playerUser.id,
+        id: player.id,
         deviceId,
         email,
         deviceName,
         spotifyAccountId,
         zoneId,
-      },
-      playerDevice: {
-        id: playerDevice.id,
-        userId: playerUser.id,
-        isPaired: true,
       },
     });
   } catch (error) {
