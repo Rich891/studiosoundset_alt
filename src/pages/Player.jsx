@@ -45,14 +45,18 @@ export default function Player() {
   // Check for paired device on mount
   useEffect(() => {
     const storedDeviceId = localStorage.getItem('playerDeviceId');
-    const storedToken = localStorage.getItem('playerToken');
-    if (storedDeviceId && storedToken) {
-      setDeviceId(storedDeviceId);
-      // Find and set the paired device
-      const loadPairedDevice = async () => {
+    const storedEmail = localStorage.getItem('playerEmail');
+    const storedPassword = localStorage.getItem('playerPassword');
+
+    // If player credentials exist, auto-login
+    if (storedEmail && storedPassword) {
+      const autoLogin = async () => {
         try {
+          // This would need a login endpoint - for now just set the device
+          setDeviceId(storedDeviceId);
+          // Load paired device info
           const devices = await base44.entities.PlayerDevice.filter({
-            pairingToken: storedToken,
+            userId: storedEmail,
             isPaired: true,
           });
           if (devices.length > 0) {
@@ -60,10 +64,10 @@ export default function Player() {
             setSelectedAccountId(devices[0].spotifyAccountId);
           }
         } catch (e) {
-          console.warn('Failed to load paired device:', e);
+          console.warn('Auto-login failed:', e);
         }
       };
-      loadPairedDevice();
+      autoLogin();
     }
   }, []);
 

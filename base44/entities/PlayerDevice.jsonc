@@ -26,6 +26,10 @@
       "type": "string",
       "description": "Eindeutige Ger\u00e4te-ID (wird beim Pairing generiert)"
     },
+    "userId": {
+      "type": "string",
+      "description": "Zugeordneter Player User (auto-erstellt beim Pairing)"
+    },
     "isPaired": {
       "type": "boolean",
       "default": false,

@@ -49,9 +49,22 @@ export default function PlayerPairing() {
           return;
         }
 
-        // Mark as paired
+        // Create player user for this device
+        const playerRes = await invoke('createPlayerUser', {
+          deviceId: id,
+          deviceName: dev.name,
+        });
+
+        if (!playerRes.data?.success) {
+          throw new Error('Konnte Player-User nicht erstellen: ' + playerRes.data?.error);
+        }
+
+        const { playerEmail, playerPassword } = playerRes.data;
+
+        // Mark as paired + store user
         await base44.entities.PlayerDevice.update(dev.id, {
           deviceId: id,
+          userId: playerEmail,
           isPaired: true,
           pairedAt: new Date().toISOString(),
           lastSeen: new Date().toISOString(),
@@ -61,9 +74,11 @@ export default function PlayerPairing() {
         setStatus('success');
         setMessage(`✓ "${dev.name}" wurde erfolgreich gekoppelt!`);
 
-        // Store pairing info locally
+        // Store pairing info + credentials locally
         localStorage.setItem('playerDeviceId', id);
         localStorage.setItem('playerToken', token);
+        localStorage.setItem('playerEmail', playerEmail);
+        localStorage.setItem('playerPassword', playerPassword);
       } catch (e) {
         setStatus('error');
         setMessage('Fehler beim Koppeln: ' + e.message);
