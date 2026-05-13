@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { motion } from 'framer-motion';
 import {
   Radio, RefreshCw, AlertCircle, Play, Pause, SkipForward, SkipBack,
-  Volume2, CheckCircle2, XCircle, Monitor, Smartphone, Tablet
+  Volume2, ListMusic
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
 const invoke = (fn, payload) => base44.functions.invoke(fn, payload);
@@ -16,7 +17,7 @@ function formatMs(ms) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-function ZonePlayer({ zone, account }) {
+function ZonePlayer({ zone, account, playlists }) {
   const [playback, setPlayback] = useState(null);
   const [devices, setDevices] = useState([]);
   const [volume, setVolume] = useState(zone.defaultVolume || 50);
@@ -107,6 +108,25 @@ function ZonePlayer({ zone, account }) {
         if (res.data?.error) toast.error(res.data.error);
       } catch (e) { toast.error(e.message); }
     }, 400);
+  };
+
+  const accountPlaylists = playlists.filter(p => p.spotifyAccountId === account?.id);
+
+  const handlePlayPlaylist = async (playlistId) => {
+    const pl = accountPlaylists.find(p => p.id === playlistId);
+    if (!pl?.providerPlaylistUri) { toast.error('Keine Spotify URI für diese Playlist.'); return; }
+    setActionLoading(true);
+    try {
+      const res = await invoke('spotifyAccountControl', {
+        action: 'playPlaylist',
+        accountId: account.id,
+        contextUri: pl.providerPlaylistUri,
+        deviceId: playback?.device?.id,
+      });
+      if (res.data?.success) { toast.success(`"${pl.name}" wird abgespielt.`); setTimeout(() => refresh(false), 1000); }
+      else toast.error(res.data?.error || 'Fehler.');
+    } catch (e) { toast.error(e.message); }
+    finally { setActionLoading(false); }
   };
 
   const track = playback?.item;
@@ -202,6 +222,23 @@ function ZonePlayer({ zone, account }) {
               <Button variant="ghost" size="icon" onClick={() => handleAction('next')} disabled={actionLoading}><SkipForward className="w-5 h-5" /></Button>
             </div>
 
+            {/* Playlist select */}
+            {accountPlaylists.length > 0 && (
+              <div className="flex items-center gap-2">
+                <ListMusic className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <Select onValueChange={handlePlayPlaylist}>
+                  <SelectTrigger className="flex-1 h-8 text-xs bg-muted/30 border-border/50">
+                    <SelectValue placeholder="Playlist abspielen..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accountPlaylists.map(pl => (
+                      <SelectItem key={pl.id} value={pl.id}>{pl.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {/* Volume */}
             <div className="flex items-center gap-3">
               <Volume2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
@@ -240,6 +277,7 @@ function ZonePlayer({ zone, account }) {
 export default function NowPlaying() {
   const { data: zones = [] } = useQuery({ queryKey: ['zones'], queryFn: () => base44.entities.Zone.filter({ isActive: true }) });
   const { data: accounts = [] } = useQuery({ queryKey: ['spotifyAccounts'], queryFn: () => base44.entities.SpotifyAccount.list() });
+  const { data: playlists = [] } = useQuery({ queryKey: ['playlists'], queryFn: () => base44.entities.Playlist.list() });
 
   return (
     <div className="p-4 lg:p-8 space-y-6 max-w-7xl mx-auto">
@@ -265,7 +303,7 @@ export default function NowPlaying() {
             const account = accounts.find(a => a.id === zone.spotifyAccountId);
             return (
               <motion.div key={zone.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}>
-                <ZonePlayer zone={zone} account={account} />
+                <ZonePlayer zone={zone} account={account} playlists={playlists} />
               </motion.div>
             );
           })}

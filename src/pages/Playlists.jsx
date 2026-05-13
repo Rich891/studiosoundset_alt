@@ -3,8 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Music2, Plus, RefreshCw, Download, Eye, AlertCircle, CheckCircle2,
-  Clock, ExternalLink, ChevronDown, ChevronUp, X
+  Music2, Plus, RefreshCw, Download, Eye, AlertCircle, Play, X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -146,6 +145,32 @@ export default function Playlists() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['playlists'] }); toast.success('Playlist entfernt.'); },
   });
 
+  const { data: zonesAll = [] } = useQuery({ queryKey: ['zones'], queryFn: () => base44.entities.Zone.list() });
+
+  const handlePlay = async (pl) => {
+    const account = accounts.find(a => a.id === pl.spotifyAccountId);
+    if (!account) { toast.error('Kein Account für diese Playlist.'); return; }
+    if (account.authStatus !== 'connected') { toast.error('Spotify Account nicht verbunden.'); return; }
+    if (!pl.providerPlaylistUri) { toast.error('Keine Spotify URI gespeichert.'); return; }
+
+    // Find target device for this account's zone
+    const zone = zonesAll.find(z => z.spotifyAccountId === account.id);
+    const targetDeviceId = zone?.targetDeviceId || undefined;
+
+    try {
+      const res = await invoke('spotifyAccountControl', {
+        action: 'playPlaylist',
+        accountId: account.id,
+        contextUri: pl.providerPlaylistUri,
+        deviceId: targetDeviceId,
+      });
+      if (res.data?.success) toast.success(`"${pl.name}" wird abgespielt.`);
+      else toast.error(res.data?.error || 'Fehler beim Abspielen.');
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
   const connectedAccounts = accounts.filter(a => a.authStatus === 'connected');
   const filtered = filterAccountId === 'all' ? playlists : playlists.filter(p => p.spotifyAccountId === filterAccountId);
 
@@ -269,11 +294,14 @@ export default function Playlists() {
                       )}
 
                       <div className="flex gap-2">
-                        <Button size="sm" variant="outline" className="flex-1 gap-1.5 h-8 text-xs" onClick={() => setDetailPlaylist(pl)}>
-                          <Eye className="w-3.5 h-3.5" /> Songs
+                        <Button size="sm" className="flex-1 gap-1.5 h-8 text-xs bg-green-600 hover:bg-green-700" onClick={() => handlePlay(pl)} disabled={!pl.providerPlaylistUri}>
+                          <Play className="w-3.5 h-3.5" /> Abspielen
+                        </Button>
+                        <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs" onClick={() => setDetailPlaylist(pl)}>
+                          <Eye className="w-3.5 h-3.5" />
                         </Button>
                         <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs" onClick={() => handleResync(pl)}>
-                          <RefreshCw className="w-3.5 h-3.5" /> Sync
+                          <RefreshCw className="w-3.5 h-3.5" />
                         </Button>
                         <Button size="sm" variant="ghost" className="h-8 text-destructive/60 hover:text-destructive text-xs" onClick={() => deleteMutation.mutate(pl.id)}>
                           <X className="w-3.5 h-3.5" />
