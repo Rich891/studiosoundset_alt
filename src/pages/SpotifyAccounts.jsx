@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Music2, Plus, RefreshCw, CheckCircle2, XCircle, AlertCircle,
-  Clock, Smartphone, ExternalLink, Trash2, Link2, Link2Off, ChevronDown, ChevronUp
+  Trash2, Link2, Link2Off, ChevronDown, ChevronUp, Pencil
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,12 +23,12 @@ const STATUS_CFG = {
   error:        { icon: XCircle,      color: 'text-red-400',    bg: 'bg-red-500/10 border-red-500/20',       label: 'Fehler' },
 };
 
+const EMPTY_FORM = { displayName: '', clientId: '', clientSecret: '', zoneId: '' };
+
 export default function SpotifyAccounts() {
-  const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newZoneId, setNewZoneId] = useState('');
-  const [newClientId, setNewClientId] = useState('');
-  const [newClientSecret, setNewClientSecret] = useState('');
+  const [showDialog, setShowDialog] = useState(false);
+  const [editAccount, setEditAccount] = useState(null); // null = create mode
+  const [form, setForm] = useState(EMPTY_FORM);
   const [expandedId, setExpandedId] = useState(null);
   const queryClient = useQueryClient();
 
@@ -43,13 +43,65 @@ export default function SpotifyAccounts() {
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.SpotifyAccount.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['spotifyAccounts'] }); setShowCreate(false); setNewName(''); setNewZoneId(''); setNewClientId(''); setNewClientSecret(''); toast.success('Account erstellt.'); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['spotifyAccounts'] });
+      closeDialog();
+      toast.success('Account erstellt.');
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.SpotifyAccount.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['spotifyAccounts'] });
+      closeDialog();
+      toast.success('Account aktualisiert.');
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.SpotifyAccount.delete(id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['spotifyAccounts'] }); toast.success('Account entfernt.'); },
   });
+
+  const openCreate = () => {
+    setEditAccount(null);
+    setForm(EMPTY_FORM);
+    setShowDialog(true);
+  };
+
+  const openEdit = (acc) => {
+    setEditAccount(acc);
+    setForm({
+      displayName: acc.displayName || '',
+      clientId: acc.clientId || '',
+      clientSecret: '', // never pre-fill secret
+      zoneId: acc.zoneId || '',
+    });
+    setShowDialog(true);
+  };
+
+  const closeDialog = () => {
+    setShowDialog(false);
+    setEditAccount(null);
+    setForm(EMPTY_FORM);
+  };
+
+  const handleSave = () => {
+    const payload = {
+      displayName: form.displayName.trim(),
+      clientId: form.clientId.trim(),
+      zoneId: form.zoneId || undefined,
+    };
+    // Only include clientSecret if user typed something
+    if (form.clientSecret.trim()) payload.clientSecret = form.clientSecret.trim();
+
+    if (editAccount) {
+      updateMutation.mutate({ id: editAccount.id, data: payload });
+    } else {
+      createMutation.mutate({ ...payload, authStatus: 'disconnected', tokenStatus: 'missing' });
+    }
+  };
 
   const handleConnect = async (account) => {
     const redirectUri = 'https://fit-sound-flow.base44.app/spotify-callback';
@@ -79,6 +131,9 @@ export default function SpotifyAccounts() {
     }
   };
 
+  const isFormValid = form.displayName.trim() && form.clientId.trim() && (editAccount || form.clientSecret.trim());
+  const isSaving = createMutation.isPending || updateMutation.isPending;
+
   if (isLoading) return (
     <div className="p-8 flex items-center justify-center gap-3">
       <RefreshCw className="w-5 h-5 text-primary animate-spin" />
@@ -100,7 +155,7 @@ export default function SpotifyAccounts() {
             Jede Zone verbindet sich mit einem eigenen Spotify Premium Account.
           </p>
         </div>
-        <Button className="bg-primary hover:bg-primary/90 h-11 px-6 gap-2 font-semibold" onClick={() => setShowCreate(true)}>
+        <Button className="bg-primary hover:bg-primary/90 h-11 px-6 gap-2 font-semibold" onClick={openCreate}>
           <Plus className="w-4 h-4" /> Account hinzufügen
         </Button>
       </div>
@@ -122,7 +177,7 @@ export default function SpotifyAccounts() {
           <Music2 className="w-16 h-16 text-muted-foreground/20 mx-auto mb-4" />
           <h3 className="text-xl font-bold mb-2">Noch keine Accounts</h3>
           <p className="text-muted-foreground text-sm mb-6">Erstelle einen Eintrag pro Zone (Tennishalle, Gym, Test).</p>
-          <Button className="bg-primary hover:bg-primary/90" onClick={() => setShowCreate(true)}>
+          <Button className="bg-primary hover:bg-primary/90" onClick={openCreate}>
             <Plus className="w-4 h-4 mr-2" /> Ersten Account erstellen
           </Button>
         </div>
@@ -150,6 +205,7 @@ export default function SpotifyAccounts() {
                           {acc.tokenStatus === 'expired' && <span className="text-xs text-yellow-400">⚠ Token abgelaufen</span>}
                           {zone && <span className="text-xs text-muted-foreground px-2 py-0.5 bg-muted/30 rounded-full">Zone: {zone.name}</span>}
                           {acc.spotifyUserEmail && <span className="text-xs text-muted-foreground">{acc.spotifyUserEmail}</span>}
+                          {acc.clientId && <span className="text-xs text-muted-foreground font-mono">ID: {acc.clientId.substring(0, 8)}...</span>}
                         </div>
                         {acc.lastError && <p className="text-xs text-red-400 mt-1">⚠ {acc.lastError}</p>}
                       </div>
@@ -168,6 +224,9 @@ export default function SpotifyAccounts() {
                             <Link2 className="w-3.5 h-3.5" /> Mit Spotify verbinden
                           </Button>
                         )}
+                        <Button variant="ghost" size="sm" className="gap-1" onClick={() => openEdit(acc)}>
+                          <Pencil className="w-4 h-4" />
+                        </Button>
                         <Button variant="ghost" size="sm" className="gap-1" onClick={() => setExpandedId(isExpanded ? null : acc.id)}>
                           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                           Geräte
@@ -186,18 +245,18 @@ export default function SpotifyAccounts() {
         </div>
       )}
 
-      {/* Create Dialog */}
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+      {/* Create / Edit Dialog */}
+      <Dialog open={showDialog} onOpenChange={closeDialog}>
         <DialogContent className="bg-card border-border max-w-md">
           <DialogHeader>
-            <DialogTitle>Spotify Account hinzufügen</DialogTitle>
+            <DialogTitle>{editAccount ? 'Account bearbeiten' : 'Spotify Account hinzufügen'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div>
               <Label className="text-sm font-semibold mb-2 block">Name des Accounts *</Label>
               <Input
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
+                value={form.displayName}
+                onChange={e => setForm(f => ({ ...f, displayName: e.target.value }))}
                 placeholder="z. B. Tennishalle Account"
                 className="h-11 bg-muted/30"
               />
@@ -207,19 +266,21 @@ export default function SpotifyAccounts() {
               <div>
                 <Label className="text-sm font-semibold mb-2 block">Client ID *</Label>
                 <Input
-                  value={newClientId}
-                  onChange={e => setNewClientId(e.target.value)}
+                  value={form.clientId}
+                  onChange={e => setForm(f => ({ ...f, clientId: e.target.value }))}
                   placeholder="z. B. aefead8812d34ebfb862bf497c13326c"
                   className="h-11 bg-muted/30 font-mono text-xs"
                 />
               </div>
               <div>
-                <Label className="text-sm font-semibold mb-2 block">Client Secret *</Label>
+                <Label className="text-sm font-semibold mb-2 block">
+                  Client Secret {editAccount ? '(leer lassen = unverändert)' : '*'}
+                </Label>
                 <Input
                   type="password"
-                  value={newClientSecret}
-                  onChange={e => setNewClientSecret(e.target.value)}
-                  placeholder="Dein Spotify Client Secret"
+                  value={form.clientSecret}
+                  onChange={e => setForm(f => ({ ...f, clientSecret: e.target.value }))}
+                  placeholder={editAccount ? '••••••••••••••••••••••••' : 'Dein Spotify Client Secret'}
                   className="h-11 bg-muted/30 font-mono text-xs"
                 />
               </div>
@@ -227,7 +288,7 @@ export default function SpotifyAccounts() {
             </div>
             <div>
               <Label className="text-sm font-semibold mb-2 block">Zone zuweisen</Label>
-              <Select value={newZoneId} onValueChange={setNewZoneId}>
+              <Select value={form.zoneId} onValueChange={v => setForm(f => ({ ...f, zoneId: v }))}>
                 <SelectTrigger className="h-11 bg-muted/30"><SelectValue placeholder="Zone wählen (optional)" /></SelectTrigger>
                 <SelectContent>
                   {zones.map(z => <SelectItem key={z.id} value={z.id}>{z.name}</SelectItem>)}
@@ -235,13 +296,13 @@ export default function SpotifyAccounts() {
               </Select>
             </div>
             <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={() => setShowCreate(false)}>Abbrechen</Button>
+              <Button variant="outline" className="flex-1" onClick={closeDialog}>Abbrechen</Button>
               <Button
                 className="flex-1 bg-primary hover:bg-primary/90 font-bold"
-                disabled={!newName.trim() || !newClientId.trim() || !newClientSecret.trim() || createMutation.isPending}
-                onClick={() => createMutation.mutate({ displayName: newName.trim(), clientId: newClientId.trim(), clientSecret: newClientSecret.trim(), zoneId: newZoneId || undefined, authStatus: 'disconnected', tokenStatus: 'missing' })}
+                disabled={!isFormValid || isSaving}
+                onClick={handleSave}
               >
-                {createMutation.isPending ? 'Erstelle...' : 'Erstellen'}
+                {isSaving ? 'Speichern...' : editAccount ? 'Speichern' : 'Erstellen'}
               </Button>
             </div>
           </div>
