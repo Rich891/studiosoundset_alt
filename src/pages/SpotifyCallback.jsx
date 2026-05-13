@@ -5,7 +5,8 @@ import { appParams } from '@/lib/app-params';
 import { CheckCircle2, XCircle, RefreshCw, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-const REDIRECT_URI = 'https://fit-sound-flow.base44.app/spotify-callback';
+// Dynamisch basierend auf aktuellem Origin
+const getRedirectUri = () => window.location.origin + '/spotify-callback';
 
 export default function SpotifyCallback() {
   const [status, setStatus] = useState('loading');
@@ -70,7 +71,7 @@ export default function SpotifyCallback() {
       const res = await base44.functions.invoke('spotifyAuth', {
         action: 'exchange',
         code,
-        redirectUri: REDIRECT_URI,
+        redirectUri: getRedirectUri(),
         providerId: state,
       });
 
