@@ -18,8 +18,10 @@ Deno.serve(async (req) => {
     base44 = createClientFromRequest(req);
   } catch (e) {
     console.error('Failed to create base44 client:', e.message);
-    // For auth actions that don't write, we can proceed without auth
-    if (!['getAuthUrl', 'exchange', 'refresh'].includes(action)) {
+    // exchange und refresh BRAUCHEN base44 für DB writes
+    if (action === 'getAuthUrl') {
+      // getAuthUrl braucht base44 nicht
+    } else {
       return Response.json({ error: 'Authentication failed' }, { status: 401 });
     }
   }
