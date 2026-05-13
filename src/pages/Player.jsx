@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import PlayerLogin from '@/components/player/PlayerLogin';
 import {
   Play, Pause, SkipForward, SkipBack, Volume2, VolumeX,
   Music2, RefreshCw, AlertCircle, Wifi, WifiOff, List,
@@ -68,12 +69,18 @@ export default function Player() {
         }
       } catch (e) {
         console.warn('Auth check failed:', e);
+        setIsAuthenticated(false);
       } finally {
         setAuthLoading(false);
       }
     };
     checkAuth();
   }, []);
+
+  const handleLoginSuccess = () => {
+    setIsAuthenticated(true);
+    setAuthLoading(false);
+  };
 
   const connectedAccounts = accounts.filter(a => a.authStatus === 'connected');
 
@@ -245,29 +252,16 @@ export default function Player() {
     !selectedAccountId || p.spotifyAccountId === selectedAccountId
   );
 
+  if (!isAuthenticated) {
+    return <PlayerLogin onLoginSuccess={handleLoginSuccess} />;
+  }
+
   if (authLoading) {
     return (
       <div className="min-h-screen aurora-bg flex items-center justify-center p-4">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
           <p className="text-sm text-muted-foreground">Lade Player...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen aurora-bg flex items-center justify-center p-4">
-        <div className="w-full max-w-sm text-center space-y-4">
-          <p className="text-red-400 font-bold">Authentifizierung erforderlich</p>
-          <p className="text-sm text-muted-foreground">Bitte melden Sie sich an, um fortzufahren.</p>
-          <button
-            onClick={() => base44.auth.redirectToLogin()}
-            className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 font-semibold"
-          >
-            Zur Anmeldung
-          </button>
         </div>
       </div>
     );
