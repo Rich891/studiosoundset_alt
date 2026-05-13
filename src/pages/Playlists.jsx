@@ -102,17 +102,16 @@ function ImportModal({ account, onImport, onClose }) {
         ) : (
           <div className="space-y-2">
             {spotifyPlaylists.map(pl => (
-              <div key={pl.id} className="flex items-center gap-3 p-3 rounded-xl border border-border/30 hover:border-border transition-all">
+              <button key={pl.id} className="w-full flex items-center gap-3 p-3 rounded-xl border border-border/30 hover:border-primary/50 hover:bg-primary/5 transition-all text-left disabled:opacity-60 disabled:cursor-wait" onClick={() => handleImport(pl)} disabled={importing === pl.id}>
                 {pl.images?.[0]?.url ? <img src={pl.images[0].url} alt={pl.name} className="w-12 h-12 rounded-lg flex-shrink-0" /> : <div className="w-12 h-12 bg-muted/30 rounded-lg flex items-center justify-center flex-shrink-0"><Music2 className="w-5 h-5 text-muted-foreground" /></div>}
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold truncate">{pl.name}</p>
                   <p className="text-xs text-muted-foreground">{pl.tracks?.total} Songs · {pl.owner?.display_name}</p>
                 </div>
-                <Button size="sm" variant="outline" className="gap-1.5 flex-shrink-0" onClick={() => handleImport(pl)} disabled={importing === pl.id}>
-                  {importing === pl.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                  {importing === pl.id ? 'Importiert...' : 'Importieren'}
-                </Button>
-              </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0 text-sm font-medium text-primary">
+                  {importing === pl.id ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Importiert...</> : <><Download className="w-3.5 h-3.5" /> Importieren</>}
+                </div>
+              </button>
             ))}
             {spotifyPlaylists.length === 0 && !loading && !error && (
               <p className="text-center text-muted-foreground py-6 text-sm">Keine Playlists für diesen Account gefunden.</p>
