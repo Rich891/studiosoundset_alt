@@ -3,12 +3,6 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { deviceId, deviceName } = await req.json();
 
     if (!deviceId || !deviceName) {
@@ -24,8 +18,8 @@ Deno.serve(async (req) => {
     // Create player user with email format: player-[deviceId]@studio
     const playerEmail = `player-${deviceId}@studio`;
 
-    // Invite user as "player" role
-    await base44.users.inviteUser(playerEmail, 'user');
+    // Invite user as "user" role (using service role for public pairing flow)
+    await base44.asServiceRole.users.inviteUser(playerEmail, 'user');
 
     // Return the player credentials for the device to use
     return Response.json({
