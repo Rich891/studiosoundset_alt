@@ -20,6 +20,7 @@ import SystemCheck from './pages/SystemCheck';
 import Logs from './pages/Logs';
 import Settings from './pages/Settings';
 import NotFound from './pages/NotFound';
+import Player from './pages/Player';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, isAuthenticated } = useAuth();
@@ -68,6 +69,7 @@ const AuthenticatedApp = () => {
         <Route path="/system-check" element={<SystemCheck />} />
         <Route path="/logs" element={<Logs />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/player" element={<Player />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

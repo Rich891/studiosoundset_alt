@@ -1,13 +1,14 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Music2, MapPin, Radio, Calendar,
-  Settings, Activity, FileText, ChevronRight, Zap, LogOut, User
+  Settings, Activity, FileText, ChevronRight, Zap, LogOut, User, Headphones
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 
 const NAV = [
   { path: '/dashboard',         label: 'Dashboard',           icon: LayoutDashboard },
+  { path: '/player',            label: '▶ Browser Player',    icon: Headphones,  highlight: true },
   { path: '/spotify-accounts',  label: 'Spotify Accounts',    icon: Music2 },
   { path: '/zones',             label: 'Zonen',               icon: MapPin },
   { path: '/now-playing',       label: 'Now Playing',         icon: Radio },
@@ -51,9 +52,11 @@ export default function Sidebar() {
               <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all group ${
                 active
                   ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  : item.highlight
+                  ? 'text-green-400 hover:bg-green-500/10 border border-green-500/20 mb-1'
                   : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
               }`}>
-                <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-sidebar-primary' : 'text-sidebar-foreground/60 group-hover:text-sidebar-foreground'}`} />
+                <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-sidebar-primary' : item.highlight ? 'text-green-400' : 'text-sidebar-foreground/60 group-hover:text-sidebar-foreground'}`} />
                 <span className="flex-1">{item.label}</span>
                 {active && <ChevronRight className="w-3 h-3 text-sidebar-primary" />}
               </div>

@@ -131,6 +131,8 @@ Deno.serve(async (req) => {
       'user-read-currently-playing',
       'playlist-read-private',
       'playlist-read-collaborative',
+      'playlist-modify-public',
+      'playlist-modify-private',
       'streaming',
     ].join(' ');
 
@@ -319,6 +321,20 @@ Deno.serve(async (req) => {
       const qs = deviceId ? `?device_id=${deviceId}` : '';
       await spotifyFetchWithRefresh(base44, accountId, tokens, 'POST', `/me/player/previous${qs}`);
       return Response.json({ success: true });
+    }
+
+    // ── GET ACCESS TOKEN (for Web Playback SDK) ───────────────────────────────
+    if (action === 'getAccessToken') {
+      // Refresh token to ensure freshness
+      if (tokens.refreshToken) {
+        try {
+          const freshToken = await refreshAccessToken(base44, accountId, tokens.refreshToken);
+          return Response.json({ success: true, accessToken: freshToken });
+        } catch (e) {
+          // Fall back to stored token
+        }
+      }
+      return Response.json({ success: true, accessToken: tokens.accessToken });
     }
 
     // ── GET USER PLAYLISTS ────────────────────────────────────────────────────

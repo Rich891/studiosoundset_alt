@@ -267,6 +267,16 @@ export default function Playlists() {
         </div>
       )}
 
+      {connectedAccounts.length > 0 && (
+        <div className="bento-panel border-blue-500/20 bg-blue-500/5 p-4 flex items-start gap-3">
+          <AlertCircle className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="text-blue-300 font-semibold">Playlist-Import funktioniert nicht?</p>
+            <p className="text-muted-foreground text-xs mt-0.5">Verbinde den Account unter <a href="/spotify-accounts" className="text-blue-400 underline font-semibold">Spotify Accounts → "Erneut verbinden"</a> neu, damit alle benötigten Berechtigungen (Scopes) aktualisiert werden.</p>
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="flex items-center justify-center gap-2 py-10"><RefreshCw className="w-5 h-5 animate-spin text-primary" /></div>
       ) : filtered.length === 0 ? (
