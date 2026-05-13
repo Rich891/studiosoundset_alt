@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import PlayerLoginPage from '@/pages/PlayerLogin';
+import PlayerLogin from '@/pages/PlayerLogin';
 import {
   Play, Pause, SkipForward, SkipBack, Volume2, VolumeX,
   Music2, RefreshCw, AlertCircle, Wifi, WifiOff, List,
@@ -243,7 +243,10 @@ export default function PlayerNew() {
   }
 
   if (!playerUser) {
-    return <PlayerLoginPage />;
+    return <PlayerLogin onLoginSuccess={() => {
+      const user = JSON.parse(localStorage.getItem('playerUser'));
+      setPlayerUser(user);
+    }} />;
   }
 
   const track = playerState?.track_window?.current_track;
