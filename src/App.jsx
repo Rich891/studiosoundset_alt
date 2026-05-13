@@ -40,8 +40,9 @@ const AuthenticatedApp = () => {
     if (authError.type === 'auth_required') { navigateToLogin(); return null; }
   }
 
-  // If not authenticated, redirect to login
-  if (!isLoadingAuth && !isAuthenticated) {
+  // SpotifyCallback is handled before auth check (see Routes below)
+  // If not authenticated and not on callback page, redirect to login
+  if (!isLoadingAuth && !isAuthenticated && window.location.pathname !== '/spotify-callback') {
     navigateToLogin();
     return null;
   }
@@ -50,7 +51,7 @@ const AuthenticatedApp = () => {
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-      {/* Spotify OAuth callback — outside layout */}
+      {/* Spotify OAuth callback — MUST be outside auth gate, Spotify redirects lose session */}
       <Route path="/spotify-callback" element={<SpotifyCallback />} />
 
       {/* App with Layout */}

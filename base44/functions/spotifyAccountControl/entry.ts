@@ -97,9 +97,13 @@ Deno.serve(async (req) => {
 
   const { action, accountId } = body;
 
+  // getAuthUrl and exchange work without user session (OAuth flow redirects lose session)
+  // All other actions need user auth context but use asServiceRole for DB operations
   const base44 = createClientFromRequest(req);
 
   // ── GET AUTH URL ────────────────────────────────────────────────────────────
+  // Note: getAuthUrl and exchange do NOT require an authenticated user session
+  // because the OAuth flow itself IS the authentication step.
   if (action === 'getAuthUrl') {
     const { redirectUri, accountId: aid } = body;
     if (!redirectUri || !aid) return Response.json({ error: 'Missing redirectUri or accountId' }, { status: 400 });
