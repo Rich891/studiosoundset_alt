@@ -1,8 +1,10 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Music2, MapPin, Radio, Calendar,
-  Settings, Activity, FileText, ChevronRight, Zap
+  Settings, Activity, FileText, ChevronRight, Zap, LogOut, User
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { base44 } from '@/api/base44Client';
 
 const NAV = [
   { path: '/dashboard',         label: 'Dashboard',           icon: LayoutDashboard },
@@ -18,6 +20,11 @@ const NAV = [
 
 export default function Sidebar() {
   const { pathname } = useLocation();
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    base44.auth.me().then(setUser).catch(() => setUser(null));
+  }, []);
 
   return (
     <aside className="hidden lg:flex flex-col w-64 min-h-screen bg-sidebar border-r border-sidebar-border">
@@ -55,7 +62,31 @@ export default function Sidebar() {
         })}
       </nav>
 
-      <div className="p-4 border-t border-sidebar-border">
+      <div className="p-4 border-t border-sidebar-border space-y-2">
+        {user ? (
+          <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20">
+            <div className="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
+              <User className="w-3 h-3 text-green-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] text-green-400 font-semibold truncate">✓ Eingeloggt</p>
+              <p className="text-[9px] text-muted-foreground truncate">{user.email}</p>
+            </div>
+            <button onClick={() => base44.auth.logout()} title="Ausloggen">
+              <LogOut className="w-3 h-3 text-muted-foreground hover:text-destructive" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20">
+            <div className="w-6 h-6 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
+              <User className="w-3 h-3 text-red-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] text-red-400 font-semibold">✗ Nicht eingeloggt</p>
+              <button onClick={() => base44.auth.redirectToLogin()} className="text-[9px] text-blue-400 underline">Einloggen</button>
+            </div>
+          </div>
+        )}
         <p className="text-[10px] text-muted-foreground">Nur für private Nutzung.</p>
       </div>
     </aside>
