@@ -178,11 +178,29 @@ function ZonePlayer({ zone, account, playlists }) {
 
         {/* No playback */}
         {!loading && !error && !track && (
-          <div className="text-center py-6">
-            <p className="text-muted-foreground text-sm">Keine aktive Wiedergabe.</p>
-            {statusDetail && <p className="text-xs text-muted-foreground mt-1">{statusDetail}</p>}
-            {devices.length > 0 && (
-              <p className="text-xs text-muted-foreground mt-2">{devices.length} Gerät(e) für diesen Account gefunden.</p>
+          <div className="py-4 space-y-4">
+            <div className="text-center">
+              <p className="text-muted-foreground text-sm">Keine aktive Wiedergabe.</p>
+              {statusDetail && <p className="text-xs text-muted-foreground mt-1">{statusDetail}</p>}
+              {devices.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-2">{devices.length} Gerät(e) für diesen Account gefunden.</p>
+              )}
+            </div>
+            {/* Playlist starten auch ohne aktive Wiedergabe */}
+            {accountPlaylists.length > 0 && (
+              <div className="flex items-center gap-2">
+                <ListMusic className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <Select onValueChange={handlePlayPlaylist} disabled={actionLoading}>
+                  <SelectTrigger className="flex-1 h-9 text-xs bg-muted/30 border-border/50">
+                    <SelectValue placeholder="Playlist starten..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accountPlaylists.map(pl => (
+                      <SelectItem key={pl.id} value={pl.id}>{pl.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
           </div>
         )}
