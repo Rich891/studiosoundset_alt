@@ -1,7 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const CLIENT_ID = Deno.env.get('SPOTIFY_CLIENT_ID');
-const CLIENT_SECRET = Deno.env.get('SPOTIFY_CLIENT_SECRET');
 const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
 
 Deno.serve(async (req) => {
@@ -13,7 +11,7 @@ Deno.serve(async (req) => {
     return Response.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { action, code, redirectUri, refreshToken, providerId, scopes } = body;
+  const { action, code, redirectUri, refreshToken, providerId, scopes, clientId, clientSecret } = body;
 
   // Initialize base44 ONCE for all actions
   let base44;
@@ -27,9 +25,16 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Validate secrets
+  // Validate credentials (from payload or request)
+  let CLIENT_ID = clientId;
+  let CLIENT_SECRET = clientSecret;
+
+  // If not in payload, try env (fallback for getAuthUrl without provider context)
+  if (!CLIENT_ID) CLIENT_ID = Deno.env.get('SPOTIFY_CLIENT_ID');
+  if (!CLIENT_SECRET) CLIENT_SECRET = Deno.env.get('SPOTIFY_CLIENT_SECRET');
+
   if (!CLIENT_ID || !CLIENT_SECRET) {
-    return Response.json({ error: 'Spotify credentials not configured' }, { status: 500 });
+    return Response.json({ error: 'Spotify credentials missing' }, { status: 400 });
   }
 
   // Build Basic Auth header for Spotify

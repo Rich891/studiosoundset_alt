@@ -98,11 +98,20 @@ export default function SpotifyAccounts() {
   };
 
   const handleConnect = async (provider) => {
+    // Provider muss clientId & clientSecret haben
+    if (!provider.clientId || !provider.clientSecret) {
+      toast.error('Client ID und Secret sind erforderlich. Bitte speichern Sie die Credentials zuerst.');
+      openEdit(provider);
+      return;
+    }
+
     const redirectUri = window.location.origin + '/spotify-callback';
     try {
       const res = await base44.functions.invoke('spotifyAuth', { 
         action: 'getAuthUrl', 
-        providerId: provider.id, 
+        providerId: provider.id,
+        clientId: provider.clientId,
+        clientSecret: provider.clientSecret,
         redirectUri,
         scopes: [
           'user-read-private',

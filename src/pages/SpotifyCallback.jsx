@@ -61,18 +61,27 @@ export default function SpotifyCallback() {
     setMessage('Verbinde mit Spotify...');
 
     try {
-      // Try to get provider name
+      // Get provider with credentials
+      let provider = null;
       try {
         const providers = await base44.entities.Provider.list();
-        const provider = providers.find(p => p.id === state);
+        provider = providers.find(p => p.id === state);
         if (provider) setAccountName(provider.name);
       } catch {}
+
+      if (!provider || !provider.clientId || !provider.clientSecret) {
+        setStatus('error');
+        setMessage('Provider hat keine Spotify Credentials. Bitte aktualisieren Sie den Provider.');
+        return;
+      }
 
       const res = await base44.functions.invoke('spotifyAuth', {
         action: 'exchange',
         code,
         redirectUri: getRedirectUri(),
         providerId: state,
+        clientId: provider.clientId,
+        clientSecret: provider.clientSecret,
       });
 
       if (res.data?.success) {
