@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -44,7 +44,7 @@ function ImportModal({ account, onImport, onClose }) {
     }
   };
 
-  useState(() => { loadPlaylists(); }, []);
+  useEffect(() => { loadPlaylists(); }, []);
 
   const handleImport = async (pl) => {
     setImporting(pl.id);
