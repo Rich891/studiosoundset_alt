@@ -95,6 +95,15 @@ export default function ManagePlayerDevices() {
     toast.success('Kopiert!');
   };
 
+  const generatePassword = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let pwd = '';
+    for (let i = 0; i < 8; i++) {
+      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setFormData({ ...formData, password: pwd });
+  };
+
   const getAccountName = (id) => spotifyAccounts.find(a => a.id === id)?.displayName || id;
   const getZoneName = (id) => zones.find(z => z.id === id)?.name || id;
 
@@ -287,14 +296,24 @@ export default function ManagePlayerDevices() {
               <label className="text-xs font-semibold text-muted-foreground mb-2 block">
                 Passwort
               </label>
-              <Input
-                type="password"
-                placeholder="Sicheres Passwort"
-                value={formData.password}
-                onChange={(e) =>
-                  setFormData({ ...formData, password: e.target.value })
-                }
-              />
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  placeholder="z.B. ABC12345"
+                  value={formData.password}
+                  onChange={(e) =>
+                    setFormData({ ...formData, password: e.target.value })
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={generatePassword}
+                  className="whitespace-nowrap"
+                >
+                  Generieren
+                </Button>
+              </div>
             </div>
 
             <div className="flex gap-2 pt-4">
