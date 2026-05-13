@@ -33,10 +33,9 @@ const AuthenticatedApp = () => {
   const location = useLocation();
 
   // Public routes that don't need admin auth
-  if (location.pathname === '/' || location.pathname === '/spotify-callback' || location.pathname === '/player-pairing' || location.pathname === '/player-new') {
+  if (location.pathname === '/spotify-callback' || location.pathname === '/player-pairing' || location.pathname === '/player-new') {
     return (
       <Routes>
-        <Route path="/" element={<PlayerLoginIndex />} />
         <Route path="/spotify-callback" element={<SpotifyCallback />} />
         <Route path="/player-pairing" element={<PlayerPairing />} />
         <Route path="/player-new" element={<PlayerNew />} />
