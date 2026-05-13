@@ -29,6 +29,32 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Spotify Account nicht verbunden' }, { status: 400 });
     }
 
+    // Spezial-Kommando: syncStatus (nur Status aktualisieren, keine Spotify-API)
+    if (command === 'syncStatus') {
+      try {
+        await base44.asServiceRole.entities.PlayerDevice.update(device.id, {
+          isPlaying: payload?.isPlaying,
+          progressMs: payload?.progressMs,
+          volume: payload?.volume,
+          lastStatusUpdate: payload?.lastStatusUpdate,
+          lastSeen: payload?.lastSeen,
+          isPaired: payload?.isPaired,
+          isActive: payload?.isActive,
+          userId: payload?.userId,
+          currentTrackName: payload?.currentTrackName,
+          currentTrackArtist: payload?.currentTrackArtist,
+          currentTrackAlbum: payload?.currentTrackAlbum,
+          currentTrackCoverUrl: payload?.currentTrackCoverUrl,
+          currentTrackUri: payload?.currentTrackUri,
+          currentTrackDuration: payload?.currentTrackDuration,
+          currentPlaylistUri: payload?.currentPlaylistUri,
+        });
+        return Response.json({ success: true, command: 'syncStatus' });
+      } catch (e) {
+        return Response.json({ error: e.message }, { status: 500 });
+      }
+    }
+    
     // Command ausführen via spotifyAccountControl
     let result = {};
     
@@ -53,9 +79,12 @@ Deno.serve(async (req) => {
     // Nach erfolgreichem Command: Aktualisiere PlayerDevice Status
     // Bei Volume: sofort speichern
     if (command === 'setVolume' && payload?.volume !== undefined) {
-      await base44.entities.PlayerDevice.update(playerDeviceId, {
+      await base44.entities.PlayerDevice.update(device.id, {
         volume: payload.volume,
         lastStatusUpdate: new Date().toISOString(),
+        userId: playerDeviceId,
+        isPaired: true,
+        isActive: true,
       });
     }
 
@@ -71,7 +100,7 @@ Deno.serve(async (req) => {
           const pb = pbRes.playback;
           const track = pb.item || {};
           
-          await base44.entities.PlayerDevice.update(playerDeviceId, {
+          await base44.entities.PlayerDevice.update(device.id, {
             isPlaying: pb.is_playing || false,
             volume: pb.device?.volume_percent || device.volume,
             progressMs: pb.progress_ms || 0,
@@ -82,6 +111,9 @@ Deno.serve(async (req) => {
             currentTrackUri: track.uri || '',
             currentTrackDuration: track.duration_ms || 0,
             lastStatusUpdate: new Date().toISOString(),
+            userId: playerDeviceId,
+            isPaired: true,
+            isActive: true,
           });
         }
       } catch (statusError) {

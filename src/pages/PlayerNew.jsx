@@ -21,7 +21,7 @@ async function syncPlayerStatus(state, playerUser) {
   try {
     const track = state.track_window?.current_track;
     const contextUri = state.track_window?.current_context?.uri;
-    const updateData = {
+    const payload = {
       isPlaying: !state.paused,
       progressMs: state.position || 0,
       volume: Math.round((state.device?.volume_percent || 0)),
@@ -29,29 +29,28 @@ async function syncPlayerStatus(state, playerUser) {
       lastSeen: new Date().toISOString(),
       isPaired: true,
       isActive: true,
-      userId: playerUser.id, // KRITISCH: userId muss PlayerUser.id sein!
+      userId: playerUser.id,
     };
     
     if (track) {
-      updateData.currentTrackName = track.name || '';
-      updateData.currentTrackArtist = track.artists?.[0]?.name || '';
-      updateData.currentTrackAlbum = track.album?.name || '';
-      updateData.currentTrackCoverUrl = track.album?.images?.[0]?.url || '';
-      updateData.currentTrackUri = track.uri || '';
-      updateData.currentTrackDuration = track.duration_ms || 0;
+      payload.currentTrackName = track.name || '';
+      payload.currentTrackArtist = track.artists?.[0]?.name || '';
+      payload.currentTrackAlbum = track.album?.name || '';
+      payload.currentTrackCoverUrl = track.album?.images?.[0]?.url || '';
+      payload.currentTrackUri = track.uri || '';
+      payload.currentTrackDuration = track.duration_ms || 0;
     }
     
     if (contextUri) {
-      updateData.currentPlaylistUri = contextUri;
+      payload.currentPlaylistUri = contextUri;
     }
     
-    // Finde PlayerDevice via playerUser.id
-    const devices = await base44.entities.PlayerDevice.list();
-    const device = devices.find(d => d.userId === playerUser.id);
-    
-    if (device) {
-      await base44.entities.PlayerDevice.update(device.id, updateData);
-    }
+    // Invoke playerDeviceCommand mit syncStatus-Aktion
+    await invoke('playerDeviceCommand', {
+      playerDeviceId: playerUser.id,
+      command: 'syncStatus',
+      payload,
+    });
   } catch (error) {
     console.error('Failed to sync player status:', error);
   }
