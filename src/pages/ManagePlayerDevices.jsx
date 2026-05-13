@@ -16,8 +16,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Copy, Trash2, Eye, EyeOff } from 'lucide-react';
+import { Plus, Copy, Trash2, Eye, EyeOff, QrCode } from 'lucide-react';
 import { toast } from 'sonner';
+import PlayerQRModal from '@/components/player/PlayerQRModal';
 
 const invoke = (fn, payload) => base44.functions.invoke(fn, payload);
 
@@ -25,6 +26,8 @@ export default function ManagePlayerDevices() {
   const queryClient = useQueryClient();
   const [showDialog, setShowDialog] = useState(false);
   const [showPassword, setShowPassword] = useState({});
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [qrData, setQrData] = useState({ email: '', password: '', deviceName: '' });
   const [formData, setFormData] = useState({
     deviceName: '',
     spotifyAccountId: '',
@@ -53,9 +56,16 @@ export default function ManagePlayerDevices() {
       if (!response.data?.success) throw new Error(response.data?.error || 'Fehler');
       return response.data.playerUser;
     },
-    onSuccess: () => {
+    onSuccess: (player) => {
       queryClient.invalidateQueries({ queryKey: ['playerUsers'] });
       toast.success('Player erstellt!');
+      // QR-Modal mit den Daten öffnen
+      setQrData({
+        email: player.email,
+        password: formData.password, // Das ursprüngliche Passwort (nicht gehashed)
+        deviceName: player.deviceName
+      });
+      setQrModalOpen(true);
       setShowDialog(false);
       setFormData({ deviceName: '', spotifyAccountId: '', zoneId: '', password: '' });
     },
@@ -195,6 +205,15 @@ export default function ManagePlayerDevices() {
           ))
         )}
       </div>
+
+      {/* QR Modal */}
+      <PlayerQRModal
+        open={qrModalOpen}
+        onOpenChange={setQrModalOpen}
+        email={qrData.email}
+        password={qrData.password}
+        deviceName={qrData.deviceName}
+      />
 
       {/* Create Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
