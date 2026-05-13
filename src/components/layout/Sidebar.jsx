@@ -47,26 +47,16 @@ export default function Sidebar() {
         {NAV.map(item => {
           const Icon = item.icon;
           const active = pathname === item.path || (item.path !== '/dashboard' && pathname.startsWith(item.path));
-          // Player must open in new tab (Spotify SDK doesn't work in iframes)
-          if (item.path === '/player') {
-            return (
-              <a key={item.path} href={item.path} target="_blank" rel="noopener noreferrer">
-                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all group text-green-400 hover:bg-green-500/10 border border-green-500/20 mb-1`}>
-                  <Icon className="w-4 h-4 flex-shrink-0 text-green-400" />
-                  <span className="flex-1">{item.label}</span>
-                  <span className="text-[9px] text-green-400/60">↗</span>
-                </div>
-              </a>
-            );
-          }
           return (
             <Link key={item.path} to={item.path}>
               <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all group ${
                 active
                   ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  : item.highlight
+                  ? 'text-green-400 hover:bg-green-500/10 border border-green-500/20 mb-1'
                   : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
               }`}>
-                <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-sidebar-primary' : 'text-sidebar-foreground/60 group-hover:text-sidebar-foreground'}`} />
+                <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-sidebar-primary' : item.highlight ? 'text-green-400' : 'text-sidebar-foreground/60 group-hover:text-sidebar-foreground'}`} />
                 <span className="flex-1">{item.label}</span>
                 {active && <ChevronRight className="w-3 h-3 text-sidebar-primary" />}
               </div>

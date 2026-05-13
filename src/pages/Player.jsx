@@ -142,7 +142,7 @@ export default function Player() {
       setError(e.message);
       setStatus('error');
     }
-  }, [selectedAccountId, volume]);
+  }, [selectedAccountId]);
 
   useEffect(() => {
     if (selectedAccountId) initPlayer();
@@ -165,34 +165,22 @@ export default function Player() {
   const playPlaylist = async (pl) => {
     if (!playerReady) { toast.error('Player nicht bereit.'); return; }
     if (!pl.providerPlaylistUri) { toast.error('Keine Spotify URI für diese Playlist.'); return; }
-
-    // Get fresh device_id from the SDK directly
-    const currentDeviceId = deviceId || (await playerRef.current?.getCurrentState())?.device_id;
-    if (!currentDeviceId) { toast.error('Keine Player Device ID. Bitte Seite neu laden.'); return; }
+    if (!deviceId) { toast.error('Player Device ID fehlt. Bitte Seite neu laden oder Player neu verbinden.'); return; }
 
     setLoadingPlaylist(pl.id);
     try {
-      // 1. Force transfer to this browser device (play:true = start immediately)
-      await invoke('spotifyAccountControl', {
-        action: 'transferPlayback',
-        accountId: selectedAccountId,
-        deviceId: currentDeviceId,
-      });
-      // Wait for transfer
-      await new Promise(r => setTimeout(r, 800));
-
-      // 2. Play playlist explicitly on this device_id
+      // 1. Transfer to browser device + start playing (play:true)
       const res = await invoke('spotifyAccountControl', {
         action: 'playPlaylist',
         accountId: selectedAccountId,
         contextUri: pl.providerPlaylistUri,
-        deviceId: currentDeviceId,
+        deviceId: deviceId,
       });
       if (res.data?.success) {
-        toast.success(`"${pl.name}" gestartet`);
+        toast.success(`▶ "${pl.name}"`);
         setShowPlaylists(false);
       } else {
-        toast.error(res.data?.error || 'Fehler beim Starten.');
+        toast.error(res.data?.error || 'Starten fehlgeschlagen.');
       }
     } catch (e) {
       toast.error(e.message);
@@ -212,34 +200,8 @@ export default function Player() {
     !selectedAccountId || p.spotifyAccountId === selectedAccountId
   );
 
-  // Detect if running inside an iframe
-  const isInIframe = window.self !== window.top;
-
   return (
     <div className="min-h-screen aurora-bg flex flex-col items-center justify-center p-4">
-
-      {/* Iframe Warning */}
-      {isInIframe && (
-        <div className="w-full max-w-sm mb-4 bento-panel border-orange-500/30 bg-orange-500/8 p-4">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-bold text-orange-300 text-sm">Browser Player im Vorschau-Modus nicht verfügbar</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Spotify's SDK funktioniert nicht in iframes (Vorschau). Öffne die App direkt im Browser-Tab:
-              </p>
-              <a
-                href={window.location.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-block w-full text-center bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold py-2 px-4 rounded-lg transition-colors"
-              >
-                → In eigenem Tab öffnen
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Header */}
       <div className="w-full max-w-sm mb-6 flex items-center justify-between">
