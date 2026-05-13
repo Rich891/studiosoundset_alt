@@ -112,7 +112,13 @@ function ZonePlayer({ zone, account, playlists }) {
         }
         const targetId = activeDeviceId || devices[0]?.id;
         const res = await invoke('spotifyAccountControl', { action: 'setVolume', accountId: account.id, volume: num, deviceId: targetId });
-        if (res.data?.error) toast.error(res.data.error);
+        if (res.data?.error) {
+          if (res.data.error.includes('FORBIDDEN') || res.data.error.includes('Premium')) {
+            toast.error('Lautstärke kann auf diesem Gerät (iPhone/Android) nicht per API gesteuert werden. Bitte direkt am Gerät einstellen.');
+          } else {
+            toast.error(res.data.error);
+          }
+        }
       } catch (e) { toast.error(e.message); }
     }, 400);
   };
