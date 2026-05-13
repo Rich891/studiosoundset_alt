@@ -21,20 +21,23 @@ import Logs from './pages/Logs';
 import Settings from './pages/Settings';
 import NotFound from './pages/NotFound';
 import Player from './pages/Player';
+import PlayerNew from './pages/PlayerNew';
 import AddPlayerDevice from './pages/AddPlayerDevice';
 import PlayerPairing from './pages/PlayerPairing';
 import PlayerUsers from './pages/PlayerUsers';
+import ManagePlayerDevices from './pages/ManagePlayerDevices';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, isAuthenticated } = useAuth();
   const location = useLocation();
 
-  // SpotifyCallback & PlayerPairing NEVER get blocked — public routes
-  if (location.pathname === '/spotify-callback' || location.pathname === '/player-pairing') {
+  // Public routes that don't need admin auth
+  if (location.pathname === '/spotify-callback' || location.pathname === '/player-pairing' || location.pathname === '/player-new') {
     return (
       <Routes>
         <Route path="/spotify-callback" element={<SpotifyCallback />} />
         <Route path="/player-pairing" element={<PlayerPairing />} />
+        <Route path="/player-new" element={<PlayerNew />} />
       </Routes>
     );
   }
@@ -76,6 +79,7 @@ const AuthenticatedApp = () => {
         <Route path="/player" element={<Player />} />
         <Route path="/add-player-device" element={<AddPlayerDevice />} />
         <Route path="/player-users" element={<PlayerUsers />} />
+        <Route path="/manage-players" element={<ManagePlayerDevices />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

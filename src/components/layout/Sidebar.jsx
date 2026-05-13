@@ -9,7 +9,7 @@ import { base44 } from '@/api/base44Client';
 const NAV = [
   { path: '/dashboard',         label: 'Dashboard',           icon: LayoutDashboard },
   { path: '/player',            label: '▶ Browser Player',    icon: Headphones,  highlight: true },
-  { path: '/add-player-device', label: '+ Neues Gerät',       icon: Plus,        highlight: true },
+  { path: '/manage-players',    label: '⚙ Player verwalten',  icon: Plus,        highlight: true },
   { path: '/player-users',      label: 'Player-Users',        icon: Plus },
   { path: '/spotify-accounts',  label: 'Spotify Accounts',    icon: Music2 },
   { path: '/zones',             label: 'Zonen',               icon: MapPin },

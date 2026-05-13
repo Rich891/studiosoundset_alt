@@ -1,0 +1,47 @@
+{
+  "name": "PlayerUser",
+  "type": "object",
+  "properties": {
+    "deviceId": {
+      "type": "string",
+      "description": "Eindeutige Ger\u00e4te-ID"
+    },
+    "email": {
+      "type": "string",
+      "description": "Player Email (player-xxx@studio)"
+    },
+    "passwordHash": {
+      "type": "string",
+      "description": "Gehashtes Passwort"
+    },
+    "deviceName": {
+      "type": "string",
+      "description": "Name des Player-Ger\u00e4ts"
+    },
+    "spotifyAccountId": {
+      "type": "string",
+      "description": "Zugewiesener Spotify Account"
+    },
+    "zoneId": {
+      "type": "string",
+      "description": "Zugeordnete Zone"
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": true
+    },
+    "lastLoginAt": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "deviceId",
+    "email",
+    "passwordHash",
+    "deviceName",
+    "spotifyAccountId"
+  ]
+}
