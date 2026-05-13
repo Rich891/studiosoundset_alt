@@ -49,8 +49,10 @@ export default function SpotifyAccounts() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['spotifyAccounts'] }); toast.success('Account entfernt.'); },
   });
 
+  const APP_URL = 'https://t-sound-flow.base44.app';
+
   const handleConnect = async (account) => {
-    const redirectUri = `${window.location.origin}/spotify-callback`;
+    const redirectUri = `${APP_URL}/spotify-callback`;
     try {
       const res = await invoke('spotifyAccountControl', { action: 'getAuthUrl', accountId: account.id, redirectUri });
       if (res.data?.url) {
@@ -110,7 +112,7 @@ export default function SpotifyAccounts() {
           <p className="font-semibold text-blue-300">Redirect URI im Spotify Developer Dashboard eintragen</p>
           <p className="text-muted-foreground">Gehe zu <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">developer.spotify.com/dashboard</a>, öffne deine App und trage diese URI ein:</p>
           <code className="block bg-muted/40 rounded-lg px-3 py-2 text-xs text-blue-200 font-mono mt-1">
-            {window.location.origin}/spotify-callback
+            https://t-sound-flow.base44.app/spotify-callback
           </code>
         </div>
       </div>
