@@ -30,19 +30,48 @@ export default function AddPlayerDevice() {
   const createMutation = useMutation({
     mutationFn: async (data) => {
       const token = Math.random().toString(36).substring(2, 15);
+      const deviceId = `device_${Math.random().toString(36).substring(2, 15)}`;
+      
+      // Create device first
       const device = await base44.entities.PlayerDevice.create({
         name: data.name,
         spotifyAccountId: data.accountId,
         zoneId: data.zoneId || undefined,
         pairingToken: token,
+        deviceId: deviceId,
         pairingExpiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
       });
-      return device;
+
+      // Create player user IMMEDIATELY so credentials are in QR code
+      try {
+        const playerRes = await invoke('createPlayerUser', {
+          deviceId: deviceId,
+          deviceName: data.name,
+          playerDeviceId: device.id,
+        });
+        
+        if (!playerRes.data?.success) {
+          throw new Error('Player-User Erstellung fehlgeschlagen');
+        }
+
+        // Add credentials to device object for QR code
+        return {
+          ...device,
+          playerEmail: playerRes.data.playerEmail,
+          playerPassword: playerRes.data.playerPassword,
+        };
+      } catch (e) {
+        console.error('createPlayerUser error:', e);
+        throw e;
+      }
     },
     onSuccess: (device) => {
       setCreatedDevice(device);
       setShowQR(true);
-      toast.success('Player hinzugefügt! QR Code generiert.');
+      toast.success('Player erstellt! QR Code mit Login-Daten generiert.');
+    },
+    onError: (error) => {
+      toast.error('Fehler: ' + error.message);
     },
   });
 
@@ -55,7 +84,7 @@ export default function AddPlayerDevice() {
   };
 
   const pairingUrl = createdDevice
-    ? `${window.location.origin}/player-pairing?token=${createdDevice.pairingToken}`
+    ? `${window.location.origin}/player-pairing?token=${createdDevice.pairingToken}&email=${encodeURIComponent(createdDevice.playerEmail || '')}&password=${encodeURIComponent(createdDevice.playerPassword || '')}`
     : '';
 
   const connectedAccounts = accounts.filter(a => a.authStatus === 'connected');

@@ -17,6 +17,9 @@ export default function PlayerPairing() {
 
   useEffect(() => {
     const token = searchParams.get('token');
+    const email = searchParams.get('email');
+    const password = searchParams.get('password');
+
     if (!token) {
       setStatus('error');
       setMessage('Kein Pairing-Token gefunden.');
@@ -25,11 +28,7 @@ export default function PlayerPairing() {
 
     const pairDevice = async () => {
       try {
-        // Generate unique device ID
-        const id = `device_${Math.random().toString(36).substring(2, 15)}`;
-        setDeviceId(id);
-
-        // Find device by token
+        // Device ID is already in the token, just validate it
         const devices = await base44.entities.PlayerDevice.filter({
           pairingToken: token,
         });
@@ -49,22 +48,12 @@ export default function PlayerPairing() {
           return;
         }
 
-        // Create player user for this device
-        const playerRes = await invoke('createPlayerUser', {
-          deviceId: id,
-          deviceName: dev.name,
-          playerDeviceId: dev.id,
-        });
+        // Device already has deviceId and credentials from creation
+        const id = dev.deviceId;
+        setDeviceId(id);
 
-        if (!playerRes.data?.success) {
-          throw new Error('Konnte Player-User nicht erstellen: ' + playerRes.data?.error);
-        }
-
-        const { playerEmail, playerPassword } = playerRes.data;
-
-        // Mark as paired (credentials already stored by createPlayerUser)
+        // Mark as paired
         await base44.entities.PlayerDevice.update(dev.id, {
-          deviceId: id,
           isPaired: true,
           pairedAt: new Date().toISOString(),
           lastSeen: new Date().toISOString(),
@@ -74,11 +63,11 @@ export default function PlayerPairing() {
         setStatus('success');
         setMessage(`✓ "${dev.name}" wurde erfolgreich gekoppelt!`);
 
-        // Store pairing info + credentials locally
+        // Store credentials from QR code
         localStorage.setItem('playerDeviceId', id);
         localStorage.setItem('playerToken', token);
-        localStorage.setItem('playerEmail', playerEmail);
-        localStorage.setItem('playerPassword', playerPassword);
+        localStorage.setItem('playerEmail', email);
+        localStorage.setItem('playerPassword', password);
       } catch (e) {
         setStatus('error');
         setMessage('Fehler beim Koppeln: ' + e.message);
