@@ -9,6 +9,7 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import AppLayout from '@/components/layout/AppLayout';
 
 // Pages
+import PublicLogin from './pages/PublicLogin';
 import Dashboard from './pages/Dashboard';
 import SpotifyAccounts from './pages/SpotifyAccounts';
 import SpotifyCallback from './pages/SpotifyCallback';
@@ -32,10 +33,16 @@ const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, isAuthenticated } = useAuth();
   const location = useLocation();
 
-  // Public routes that don't need admin auth
-  if (location.pathname === '/spotify-callback' || location.pathname === '/player-pairing' || location.pathname === '/player-new') {
+  // Public routes (login, callbacks, player)
+  if (
+    location.pathname === '/' ||
+    location.pathname === '/spotify-callback' ||
+    location.pathname === '/player-pairing' ||
+    location.pathname === '/player-new'
+  ) {
     return (
       <Routes>
+        <Route path="/" element={<PublicLogin />} />
         <Route path="/spotify-callback" element={<SpotifyCallback />} />
         <Route path="/player-pairing" element={<PlayerPairing />} />
         <Route path="/player-new" element={<PlayerNew />} />
