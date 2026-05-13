@@ -9,48 +9,39 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Email und Passwort erforderlich' }, { status: 400 });
     }
 
-    // Suche Player-User (benutze asServiceRole - Player sind nicht reguläre Users)
-    let playerUsers;
-    try {
-      playerUsers = await base44.asServiceRole.entities.PlayerUser.filter({ email });
-    } catch (e) {
-      console.error('Filter error, versuche list:', e);
-      const allUsers = await base44.asServiceRole.entities.PlayerUser.list();
-      playerUsers = allUsers.filter(u => u.email === email);
-    }
+    // Suche Player
+    const players = await base44.asServiceRole.entities.Player.filter({ email });
 
-    if (playerUsers.length === 0) {
+    if (players.length === 0) {
       return Response.json({ error: 'Player nicht gefunden' }, { status: 401 });
     }
 
-    const playerUser = playerUsers[0];
+    const player = players[0];
 
-    // Einfache Passwort-Verifikation (in Produktion: bcrypt)
-    // Für jetzt: prüfe ob das eingegebene Passwort dem stored Hash entspricht
-    const passwordMatches = password === playerUser.passwordHash;
+    // Passwort-Verifikation
+    const passwordMatches = password === player.passwordHash;
 
     if (!passwordMatches) {
       return Response.json({ error: 'Passwort falsch' }, { status: 401 });
     }
 
     // Update last login
-    await base44.asServiceRole.entities.PlayerUser.update(playerUser.id, {
+    await base44.asServiceRole.entities.Player.update(player.id, {
       lastLoginAt: new Date().toISOString(),
     });
 
-    // Generiere einen einfachen Session-Token (in Produktion: JWT mit Expiry)
-    const sessionToken = btoa(`${playerUser.id}:${Date.now()}:${Math.random()}`);
+    // Generiere Session-Token
+    const sessionToken = btoa(`${player.id}:${Date.now()}:${Math.random()}`);
 
     return Response.json({
       success: true,
       sessionToken,
-      playerUser: {
-        id: playerUser.id,
-        email: playerUser.email,
-        deviceId: playerUser.deviceId,
-        deviceName: playerUser.deviceName,
-        spotifyAccountId: playerUser.spotifyAccountId,
-        zoneId: playerUser.zoneId,
+      player: {
+        id: player.id,
+        email: player.email,
+        name: player.name,
+        zoneId: player.zoneId,
+        pairingToken: player.pairingToken,
       },
     });
   } catch (error) {

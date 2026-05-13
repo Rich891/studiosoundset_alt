@@ -10,38 +10,26 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
-const invoke = (fn, payload) => base44.functions.invoke(fn, payload);
-
 function formatMs(ms) {
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-function PlayerDeviceCard({ playerUser, playerDevice, account, playlists }) {
+function PlayerCard({ player, provider, playlists }) {
   const [actionLoading, setActionLoading] = useState(false);
   const queryClient = useQueryClient();
   const tickerRef = useRef(null);
-  const [localProgress, setLocalProgress] = useState(playerDevice?.progressMs || 0);
-
-  // Merge device data (PlayerDevice hat Precedence für Status)
-  const device = {
-    id: playerUser.id,
-    name: playerUser.deviceName,
-    spotifyAccountId: playerUser.spotifyAccountId,
-    ...playerDevice, // PlayerDevice Status überschreibt
-  };
-
-  const accountPlaylists = playlists.filter(p => p.spotifyAccountId === account?.id);
+  const [localProgress, setLocalProgress] = useState(player?.progressMs || 0);
 
   const startTicker = useCallback((startMs) => {
     if (tickerRef.current) clearInterval(tickerRef.current);
     let ms = startMs;
     tickerRef.current = setInterval(() => {
       ms += 1000;
-      const dur = device.currentTrackDuration || 1;
+      const dur = player?.currentTrackDuration || 1;
       setLocalProgress(Math.min(ms, dur));
     }, 1000);
-  }, [device.currentTrackDuration]);
+  }, [player?.currentTrackDuration]);
 
   const stopTicker = useCallback(() => {
     if (tickerRef.current) {
@@ -51,20 +39,20 @@ function PlayerDeviceCard({ playerUser, playerDevice, account, playlists }) {
   }, []);
 
   useEffect(() => {
-    setLocalProgress(device.progressMs || 0);
-    if (device.isPlaying) {
-      startTicker(device.progressMs || 0);
+    setLocalProgress(player?.progressMs || 0);
+    if (player?.isPlaying) {
+      startTicker(player?.progressMs || 0);
     } else {
       stopTicker();
     }
     return () => stopTicker();
-  }, [device.progressMs, device.isPlaying, startTicker, stopTicker]);
+  }, [player?.progressMs, player?.isPlaying, startTicker, stopTicker]);
 
   const sendCommand = async (command, payload = {}) => {
     setActionLoading(true);
     try {
-      const res = await invoke('playerDeviceCommand', {
-        playerDeviceId: device.id,
+      const res = await base44.functions.invoke('playerControl', {
+        playerId: player.id,
         command,
         payload,
       });
@@ -72,7 +60,7 @@ function PlayerDeviceCard({ playerUser, playerDevice, account, playlists }) {
       if (res.data?.success) {
         toast.success(`${command} ausgeführt`);
         setTimeout(() => {
-          queryClient.invalidateQueries({ queryKey: ['playerDevices', 'playerUsers'] });
+          queryClient.invalidateQueries({ queryKey: ['players'] });
         }, 500);
       } else {
         toast.error(res.data?.error || 'Fehler');
@@ -85,7 +73,7 @@ function PlayerDeviceCard({ playerUser, playerDevice, account, playlists }) {
   };
 
   const handlePlayPlaylist = async (playlistId) => {
-    const pl = accountPlaylists.find(p => p.id === playlistId);
+    const pl = playlists.find(p => p.id === playlistId);
     if (!pl?.providerPlaylistUri) {
       toast.error('Keine Spotify URI für diese Playlist.');
       return;
@@ -95,15 +83,14 @@ function PlayerDeviceCard({ playerUser, playerDevice, account, playlists }) {
 
   const handleVolume = async (val) => {
     const num = Number(val);
-    setLocalProgress(num);
     await sendCommand('setVolume', { volume: num });
   };
 
-  // Online = lastSeen < 10s alt
-  const isOnline = playerDevice?.lastSeen && 
-    (Date.now() - new Date(playerDevice.lastSeen).getTime()) < 10000;
+  // Online wenn lastSeen < 10s alt
+  const isOnline = player?.lastSeen && 
+    (Date.now() - new Date(player.lastSeen).getTime()) < 10000;
 
-  const dur = device.currentTrackDuration || 1;
+  const dur = player?.currentTrackDuration || 1;
   const pct = Math.min(100, Math.round((localProgress / dur) * 100));
 
   return (
@@ -116,7 +103,7 @@ function PlayerDeviceCard({ playerUser, playerDevice, account, playlists }) {
             style={{ background: isOnline ? '#22c55e' : '#fbbf24' }} 
           />
           <div>
-            <p className="font-bold text-sm">{device.name}</p>
+            <p className="font-bold text-sm">{player.name}</p>
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               {isOnline ? (
                 <>
@@ -132,7 +119,7 @@ function PlayerDeviceCard({ playerUser, playerDevice, account, playlists }) {
         </div>
         <button
           onClick={() => {
-            queryClient.invalidateQueries({ queryKey: ['playerDevices', 'playerUsers'] });
+            queryClient.invalidateQueries({ queryKey: ['players'] });
             toast.success('Aktualisiert');
           }}
           className="text-muted-foreground hover:text-foreground transition-colors"
@@ -143,10 +130,10 @@ function PlayerDeviceCard({ playerUser, playerDevice, account, playlists }) {
 
       <div className="p-5 space-y-4">
         {/* Not playing */}
-        {!device.currentTrackName ? (
+        {!player.currentTrackName ? (
           <div className="py-4 space-y-4 text-center">
             <p className="text-muted-foreground text-sm">Keine aktive Wiedergabe</p>
-            {accountPlaylists.length > 0 && (
+            {playlists.length > 0 && (
               <div className="flex items-center gap-2">
                 <ListMusic className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                 <Select onValueChange={handlePlayPlaylist} disabled={actionLoading}>
@@ -154,7 +141,7 @@ function PlayerDeviceCard({ playerUser, playerDevice, account, playlists }) {
                     <SelectValue placeholder="Playlist starten..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {accountPlaylists.map(pl => (
+                    {playlists.map(pl => (
                       <SelectItem key={pl.id} value={pl.id}>{pl.name}</SelectItem>
                     ))}
                   </SelectContent>
@@ -167,31 +154,30 @@ function PlayerDeviceCard({ playerUser, playerDevice, account, playlists }) {
                 type="range"
                 min={0}
                 max={100}
-                value={device.volume || 50}
+                value={player.volume || 50}
                 onChange={e => handleVolume(e.target.value)}
                 className="flex-1 h-2 rounded-full"
-                style={{ background: `linear-gradient(to right, hsl(var(--primary)) ${device.volume}%, hsl(var(--border)) ${device.volume}%)`, WebkitAppearance: 'none' }}
+                style={{ background: `linear-gradient(to right, hsl(var(--primary)) ${player.volume}%, hsl(var(--border)) ${player.volume}%)`, WebkitAppearance: 'none' }}
               />
-              <span className="text-xs text-muted-foreground w-8 text-right">{device.volume}%</span>
+              <span className="text-xs text-muted-foreground w-8 text-right">{player.volume}%</span>
             </div>
           </div>
         ) : (
           <>
             {/* Now playing */}
             <div className="flex items-center gap-4">
-              {device.currentTrackCoverUrl ? (
-                <img src={device.currentTrackCoverUrl} alt="cover" className="w-16 h-16 rounded-xl shadow-lg flex-shrink-0 object-cover" />
+              {player.currentTrackCoverUrl ? (
+                <img src={player.currentTrackCoverUrl} alt="cover" className="w-16 h-16 rounded-xl shadow-lg flex-shrink-0 object-cover" />
               ) : (
                 <div className="w-16 h-16 rounded-xl bg-muted/20 flex items-center justify-center flex-shrink-0">
                   <Music2 className="w-8 h-8 text-muted-foreground/30" />
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="font-bold truncate text-sm">{device.currentTrackName}</p>
-                <p className="text-xs text-muted-foreground truncate">{device.currentTrackArtist}</p>
-                <p className="text-xs text-muted-foreground truncate">{device.currentTrackAlbum}</p>
+                <p className="font-bold truncate text-sm">{player.currentTrackName}</p>
+                <p className="text-xs text-muted-foreground truncate">{player.currentTrackArtist}</p>
               </div>
-              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${device.isPlaying ? 'bg-green-400 animate-pulse' : 'bg-muted-foreground'}`} />
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${player.isPlaying ? 'bg-green-400 animate-pulse' : 'bg-muted-foreground'}`} />
             </div>
 
             {/* Progress */}
@@ -212,11 +198,11 @@ function PlayerDeviceCard({ playerUser, playerDevice, account, playlists }) {
               </Button>
               <Button
                 size="icon"
-                className={`w-11 h-11 rounded-full ${device.isPlaying ? 'bg-muted hover:bg-muted/80' : 'bg-primary hover:bg-primary/90'}`}
-                onClick={() => sendCommand(device.isPlaying ? 'pause' : 'resume')}
+                className={`w-11 h-11 rounded-full ${player.isPlaying ? 'bg-muted hover:bg-muted/80' : 'bg-primary hover:bg-primary/90'}`}
+                onClick={() => sendCommand(player.isPlaying ? 'pause' : 'resume')}
                 disabled={actionLoading}
               >
-                {device.isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+                {player.isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
               </Button>
               <Button variant="ghost" size="icon" onClick={() => sendCommand('next')} disabled={actionLoading}>
                 <SkipForward className="w-5 h-5" />
@@ -224,7 +210,7 @@ function PlayerDeviceCard({ playerUser, playerDevice, account, playlists }) {
             </div>
 
             {/* Playlist select */}
-            {accountPlaylists.length > 0 && (
+            {playlists.length > 0 && (
               <div className="flex items-center gap-2">
                 <ListMusic className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                 <Select onValueChange={handlePlayPlaylist}>
@@ -232,7 +218,7 @@ function PlayerDeviceCard({ playerUser, playerDevice, account, playlists }) {
                     <SelectValue placeholder="Playlist abspielen..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {accountPlaylists.map(pl => (
+                    {playlists.map(pl => (
                       <SelectItem key={pl.id} value={pl.id}>{pl.name}</SelectItem>
                     ))}
                   </SelectContent>
@@ -247,12 +233,12 @@ function PlayerDeviceCard({ playerUser, playerDevice, account, playlists }) {
                 type="range"
                 min={0}
                 max={100}
-                value={device.volume || 50}
+                value={player.volume || 50}
                 onChange={e => handleVolume(e.target.value)}
                 className="flex-1 h-2 rounded-full"
-                style={{ background: `linear-gradient(to right, hsl(var(--primary)) ${device.volume}%, hsl(var(--border)) ${device.volume}%)`, WebkitAppearance: 'none' }}
+                style={{ background: `linear-gradient(to right, hsl(var(--primary)) ${player.volume}%, hsl(var(--border)) ${player.volume}%)`, WebkitAppearance: 'none' }}
               />
-              <span className="text-xs text-muted-foreground w-8 text-right">{device.volume}%</span>
+              <span className="text-xs text-muted-foreground w-8 text-right">{player.volume}%</span>
             </div>
           </>
         )}
@@ -262,47 +248,26 @@ function PlayerDeviceCard({ playerUser, playerDevice, account, playlists }) {
 }
 
 export default function NowPlaying() {
-  const [debug, setDebug] = useState(false);
-
-  const { data: playerUsers = [] } = useQuery({
-    queryKey: ['playerUsers'],
-    queryFn: () => base44.entities.PlayerUser.list('-lastLoginAt'),
-    refetchInterval: 3000, // Sehr aggressives Refresh
+  const { data: players = [] } = useQuery({
+    queryKey: ['players'],
+    queryFn: () => base44.entities.Player.list('-lastSeen'),
+    refetchInterval: 3000,
   });
 
-  const { data: playerDevices = [] } = useQuery({
-    queryKey: ['playerDevices'],
-    queryFn: () => base44.entities.PlayerDevice.list(),
-    refetchInterval: 3000, // Sehr aggressives Refresh
+  const { data: zones = [] } = useQuery({
+    queryKey: ['zones'],
+    queryFn: () => base44.entities.Zone.list(),
   });
 
-  const { data: accounts = [] } = useQuery({
-    queryKey: ['spotifyAccounts'],
-    queryFn: () => base44.entities.SpotifyAccount.list(),
+  const { data: providers = [] } = useQuery({
+    queryKey: ['providers'],
+    queryFn: () => base44.entities.Provider.list(),
   });
 
   const { data: playlists = [] } = useQuery({
     queryKey: ['playlists'],
     queryFn: () => base44.entities.Playlist.list(),
   });
-
-  // Debug-Log
-  useEffect(() => {
-    if (debug) {
-      console.log('🔍 NOWPLAYING DEBUG:', {
-        playerUsersCount: playerUsers.length,
-        playerDevicesCount: playerDevices.length,
-        playerUsers: playerUsers.map(pu => ({ id: pu.id, name: pu.deviceName, spotifyId: pu.spotifyAccountId })),
-        playerDevices: playerDevices.map(pd => ({ id: pd.id, userId: pd.userId, lastSeen: pd.lastSeen, isPlaying: pd.isPlaying })),
-      });
-    }
-  }, [playerUsers, playerDevices, debug]);
-
-  // Vereinfachte Merging-Logik
-  const devices = playerUsers.map(pu => ({
-    playerUser: pu,
-    playerDevice: playerDevices.find(pd => pd.userId === pu.id) || {},
-  }));
 
   return (
     <div className="p-4 lg:p-8 space-y-6 max-w-7xl mx-auto">
@@ -315,50 +280,42 @@ export default function NowPlaying() {
               </div>
               Now Playing
             </h1>
-            <p className="text-sm text-muted-foreground mt-1 ml-14">Live Player Control ({playerUsers.length} Players, {playerDevices.length} Devices)</p>
+            <p className="text-sm text-muted-foreground mt-1 ml-14">Live Player Control ({players.length} Players)</p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setDebug(!debug)}>
-            {debug ? '🔍 Debug OFF' : '🔍 Debug ON'}
-          </Button>
         </div>
       </motion.div>
 
-      {debug && (
-        <div className="bento-panel p-4 bg-muted/20 text-xs space-y-2 font-mono">
-          <p>PlayerUsers: {JSON.stringify(playerUsers.map(p => ({ id: p.id.slice(0, 8), name: p.deviceName, userId: p.id })))}</p>
-          <p>PlayerDevices: {JSON.stringify(playerDevices.map(p => ({ id: p.id.slice(0, 8), userId: p.userId?.slice(0, 8), lastSeen: p.lastSeen?.slice(-8) })))}</p>
-        </div>
-      )}
-
-      {devices.length === 0 ? (
+      {players.length === 0 ? (
         <div className="bento-panel border-dashed border-primary/20 p-16 text-center">
           <Radio className="w-16 h-16 text-muted-foreground/20 mx-auto mb-4" />
           <h3 className="text-xl font-bold mb-2">Keine Player vorhanden</h3>
-          <p className="text-muted-foreground text-sm">Erstelle zuerst einen Player in der Geräteverwaltung.</p>
+          <p className="text-muted-foreground text-sm">Erstelle zuerst Player in den Zonen.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
-          {devices.map(({ playerUser, playerDevice }, i) => {
-            const account = accounts.find(a => a.id === playerUser.spotifyAccountId);
+          {players.map((player, i) => {
+            const zone = zones.find(z => z.id === player.zoneId);
+            const provider = zone ? providers.find(p => p.id === zone.providerId) : null;
+            const playerPlaylists = zone ? playlists.filter(p => p.providerId === zone.providerId) : [];
+
             return (
               <motion.div 
-                key={playerUser.id} 
+                key={player.id} 
                 initial={{ opacity: 0, y: 15 }} 
                 animate={{ opacity: 1, y: 0 }} 
                 transition={{ delay: i * 0.07 }}
               >
-                {account ? (
-                  <PlayerDeviceCard 
-                    playerUser={playerUser} 
-                    playerDevice={playerDevice} 
-                    account={account} 
-                    playlists={playlists} 
+                {provider && zone ? (
+                  <PlayerCard 
+                    player={player} 
+                    provider={provider}
+                    playlists={playerPlaylists}
                   />
                 ) : (
                   <div className="bento-panel p-5 text-center">
                     <AlertCircle className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
-                    <p className="text-sm font-bold">{playerUser.deviceName}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Kein Spotify Account verbunden</p>
+                    <p className="text-sm font-bold">{player.name}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Zone oder Provider nicht gefunden</p>
                   </div>
                 )}
               </motion.div>

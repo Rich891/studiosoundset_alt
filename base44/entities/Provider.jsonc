@@ -3,100 +3,67 @@
   "type": "object",
   "properties": {
     "name": {
-      "type": "string"
+      "type": "string",
+      "description": "Provider Name (z.B. 'Studio Spotify Account')"
     },
     "type": {
       "type": "string",
       "enum": [
-        "spotify_demo",
-        "apple_music",
-        "business_music",
-        "custom_api",
-        "local_audio"
-      ]
-    },
-    "description": {
-      "type": "string"
-    },
-    "licenseStatus": {
-      "type": "string",
-      "enum": [
-        "demo",
-        "licensed",
-        "unlicensed",
-        "pending"
+        "spotify"
       ],
-      "default": "demo"
-    },
-    "isActive": {
-      "type": "boolean",
-      "default": true
-    },
-    "isDefault": {
-      "type": "boolean",
-      "default": false
-    },
-    "authType": {
-      "type": "string",
-      "enum": [
-        "oauth2",
-        "api_key",
-        "bearer_token",
-        "basic_auth",
-        "none"
-      ],
-      "default": "oauth2"
-    },
-    "apiBaseUrl": {
-      "type": "string"
+      "default": "spotify",
+      "description": "Provider Typ"
     },
     "clientId": {
-      "type": "string"
+      "type": "string",
+      "description": "Spotify Client ID"
     },
-    "clientSecretStored": {
-      "type": "boolean",
-      "default": false
+    "clientSecret": {
+      "type": "string",
+      "description": "Spotify Client Secret"
     },
-    "redirectUri": {
-      "type": "string"
+    "accessToken": {
+      "type": "string",
+      "description": "Aktives Access Token"
     },
-    "scopes": {
-      "type": "string"
-    },
-    "accessTokenStored": {
-      "type": "boolean",
-      "default": false
-    },
-    "refreshTokenStored": {
-      "type": "boolean",
-      "default": false
+    "refreshToken": {
+      "type": "string",
+      "description": "Refresh Token"
     },
     "tokenExpiresAt": {
-      "type": "string"
+      "type": "string",
+      "description": "Wann Token verf\u00e4llt"
     },
-    "connectionStatus": {
+    "status": {
       "type": "string",
       "enum": [
         "connected",
         "disconnected",
-        "error",
-        "expired",
-        "pending"
+        "expired"
       ],
-      "default": "disconnected"
+      "default": "disconnected",
+      "description": "Verbindungsstatus"
     },
-    "lastConnectionTestAt": {
-      "type": "string"
+    "spotifyUserId": {
+      "type": "string",
+      "description": "Spotify User ID"
     },
-    "lastSyncAt": {
-      "type": "string"
+    "spotifyUserEmail": {
+      "type": "string",
+      "description": "Spotify User Email"
     },
-    "createdBy": {
-      "type": "string"
+    "lastTestAt": {
+      "type": "string",
+      "description": "Letzter Test Zeitstempel"
+    },
+    "lastError": {
+      "type": "string",
+      "description": "Letzter Fehler"
     }
   },
   "required": [
     "name",
-    "type"
+    "clientId",
+    "clientSecret"
   ]
 }

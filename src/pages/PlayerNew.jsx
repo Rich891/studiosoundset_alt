@@ -14,43 +14,35 @@ import { Link } from 'react-router-dom';
 
 const invoke = (fn, payload) => base44.functions.invoke(fn, payload);
 
-// Sync player state to PlayerDevice
-async function syncPlayerStatus(state, playerUser) {
-  if (!state || !playerUser) return;
+// Sync player state to Player Entity
+async function syncPlayerStatus(state, player) {
+  if (!state || !player) return;
   
   try {
     const track = state.track_window?.current_track;
     const contextUri = state.track_window?.current_context?.uri;
-    const payload = {
+    const updateData = {
       isPlaying: !state.paused,
       progressMs: state.position || 0,
       volume: Math.round((state.device?.volume_percent || 0)),
       lastStatusUpdate: new Date().toISOString(),
       lastSeen: new Date().toISOString(),
-      isPaired: true,
-      isActive: true,
-      userId: playerUser.id,
+      isOnline: true,
     };
     
     if (track) {
-      payload.currentTrackName = track.name || '';
-      payload.currentTrackArtist = track.artists?.[0]?.name || '';
-      payload.currentTrackAlbum = track.album?.name || '';
-      payload.currentTrackCoverUrl = track.album?.images?.[0]?.url || '';
-      payload.currentTrackUri = track.uri || '';
-      payload.currentTrackDuration = track.duration_ms || 0;
+      updateData.currentTrackName = track.name || '';
+      updateData.currentTrackArtist = track.artists?.[0]?.name || '';
+      updateData.currentTrackAlbum = track.album?.name || '';
+      updateData.currentTrackCoverUrl = track.album?.images?.[0]?.url || '';
     }
     
     if (contextUri) {
-      payload.currentPlaylistUri = contextUri;
+      updateData.currentPlaylistUri = contextUri;
     }
     
-    // Invoke playerDeviceCommand mit syncStatus-Aktion
-    await invoke('playerDeviceCommand', {
-      playerDeviceId: playerUser.id,
-      command: 'syncStatus',
-      payload,
-    });
+    // Update Player Entity direkt
+    await base44.entities.Player.update(player.id, updateData);
   } catch (error) {
     console.error('Failed to sync player status:', error);
   }
@@ -62,7 +54,7 @@ function formatMs(ms) {
 }
 
 export default function PlayerNew() {
-  const [playerUser, setPlayerUser] = useState(null);
+  const [player, setPlayer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [playerReady, setPlayerReady] = useState(false);
   const [playerState, setPlayerState] = useState(null);
@@ -79,27 +71,37 @@ export default function PlayerNew() {
   // Check session on mount
   useEffect(() => {
     const sessionToken = localStorage.getItem('playerSessionToken');
-    const storedUser = localStorage.getItem('playerUser');
+    const storedPlayer = localStorage.getItem('player');
 
-    if (sessionToken && storedUser) {
+    if (sessionToken && storedPlayer) {
       try {
-        setPlayerUser(JSON.parse(storedUser));
+        setPlayer(JSON.parse(storedPlayer));
       } catch (e) {
         localStorage.removeItem('playerSessionToken');
-        localStorage.removeItem('playerUser');
+        localStorage.removeItem('player');
       }
     }
     setLoading(false);
   }, []);
 
-  // Load playlists für diesen Spotify Account
+  // Load Zone + Provider für diesen Player
+  const { data: zone } = useQuery({
+    queryKey: ['zone', player?.zoneId],
+    queryFn: () => player?.zoneId ? base44.entities.Zone.get(player.zoneId) : null,
+    enabled: !!player?.zoneId,
+  });
+
+  const { data: provider } = useQuery({
+    queryKey: ['provider', zone?.providerId],
+    queryFn: () => zone?.providerId ? base44.entities.Provider.get(zone.providerId) : null,
+    enabled: !!zone?.providerId,
+  });
+
+  // Load playlists für diesen Provider
   const { data: playlists = [] } = useQuery({
-    queryKey: ['playlists', playerUser?.spotifyAccountId],
-    queryFn: () => {
-      if (!playerUser?.spotifyAccountId) return [];
-      return base44.entities.Playlist.filter({ spotifyAccountId: playerUser.spotifyAccountId });
-    },
-    enabled: !!playerUser,
+    queryKey: ['playlists', provider?.id],
+    queryFn: () => provider?.id ? base44.entities.Playlist.filter({ providerId: provider.id }) : [],
+    enabled: !!provider?.id,
   });
 
   // Load Spotify Web Playback SDK
@@ -122,7 +124,7 @@ export default function PlayerNew() {
 
   // Init Player
   const initPlayer = useCallback(async () => {
-    if (!playerUser) return;
+    if (!player || !provider) return;
     setStatus('loading');
     setError('');
 
@@ -134,7 +136,7 @@ export default function PlayerNew() {
     try {
       const res = await invoke('spotifyAccountControl', {
         action: 'getAccessToken',
-        accountId: playerUser.spotifyAccountId,
+        accountId: provider.id,
       });
 
       if (!res.data?.success || !res.data?.accessToken) {
@@ -153,155 +155,143 @@ export default function PlayerNew() {
         throw new Error('Spotify SDK konnte nicht geladen werden.');
       }
 
-      const player = new window.Spotify.Player({
-        name: `${playerUser.deviceName} Player`,
+      const spotifyPlayer = new window.Spotify.Player({
+        name: `${player.name} Player`,
         getOAuthToken: async (cb) => {
           const r = await invoke('spotifyAccountControl', {
             action: 'getAccessToken',
-            accountId: playerUser.spotifyAccountId,
+            accountId: provider.id,
           });
           cb(r.data?.accessToken || accessToken);
         },
         volume: volume,
       });
 
-      player.addListener('ready', async ({ device_id }) => {
+      spotifyPlayer.addListener('ready', async ({ device_id }) => {
         setDeviceId(device_id);
         setPlayerReady(true);
         setStatus('ready');
         toast.success('Player bereit!');
         
-        // Markiere Device als gekoppelt und aktiv
+        // Update Player als gekoppelt und aktiv
         try {
-          const devices = await base44.entities.PlayerDevice.list();
-          const device = devices.find(d => d.userId === playerUser.id);
-          if (device) {
-            await base44.entities.PlayerDevice.update(device.id, {
-              isPaired: true,
-              isActive: true,
-              userId: playerUser.id, // Stelle sicher dass userId korrekt ist
-              lastSeen: new Date().toISOString(),
-            });
-          }
+          await base44.entities.Player.update(player.id, {
+            isPaired: true,
+            isOnline: true,
+            lastSeen: new Date().toISOString(),
+          });
         } catch (e) {
-          console.error('Failed to mark device as paired:', e);
+          console.error('Failed to update player:', e);
         }
         
         invoke('spotifyAccountControl', {
           action: 'transferPlayback',
-          accountId: playerUser.spotifyAccountId,
+          accountId: provider.id,
           deviceId: device_id,
         }).catch(e => console.warn('Auto-transfer failed:', e));
       });
 
-      player.addListener('not_ready', () => {
+      spotifyPlayer.addListener('not_ready', () => {
         setPlayerReady(false);
         setStatus('error');
         setError('Verbindung unterbrochen.');
       });
 
-      player.addListener('player_state_changed', (state) => {
+      spotifyPlayer.addListener('player_state_changed', (state) => {
         setPlayerState(state);
-        // Sync status to PlayerDevice
-        syncPlayerStatus(state, playerUser);
+        // Sync status to Player
+        syncPlayerStatus(state, player);
       });
 
-      player.addListener('initialization_error', ({ message }) => {
+      spotifyPlayer.addListener('initialization_error', ({ message }) => {
         setError('Init Fehler: ' + message);
         setStatus('error');
       });
 
-      player.addListener('authentication_error', ({ message }) => {
+      spotifyPlayer.addListener('authentication_error', ({ message }) => {
         setError('Token-Fehler: ' + message);
         setStatus('error');
       });
 
-      player.addListener('account_error', ({ message }) => {
+      spotifyPlayer.addListener('account_error', ({ message }) => {
         setError('Account Fehler: ' + message);
         setStatus('error');
       });
 
-      await player.connect();
-      playerRef.current = player;
+      await spotifyPlayer.connect();
+      playerRef.current = spotifyPlayer;
     } catch (e) {
       setError(e.message);
       setStatus('error');
     }
-  }, [playerUser]);
+  }, [player, provider]);
 
   useEffect(() => {
-    if (playerUser) initPlayer();
+    if (player && provider) initPlayer();
     return () => {
       if (playerRef.current) {
         playerRef.current.disconnect();
         playerRef.current = null;
       }
     };
-  }, [playerUser]);
+  }, [player, provider, initPlayer]);
 
   // Heartbeat: Update lastSeen alle 3 Sekunden wenn Player aktiv
   useEffect(() => {
-    if (!playerReady || !playerUser) return;
+    if (!playerReady || !player) return;
     
-    console.log('🎵 Heartbeat started for', playerUser.deviceName);
+    console.log('🎵 Heartbeat started for', player.name);
     
     const interval = setInterval(async () => {
       try {
         const state = playerRef.current?.getState?.();
         if (state) {
-          await syncPlayerStatus(state, playerUser);
-          console.log('💓 Heartbeat synced:', playerUser.deviceName);
+          await syncPlayerStatus(state, player);
+          console.log('💓 Heartbeat synced:', player.name);
         }
       } catch (e) {
         console.error('Heartbeat sync failed:', e);
       }
-    }, 3000); // 3 Sekunden Intervall
+    }, 3000);
     
     return () => {
       clearInterval(interval);
-      console.log('💔 Heartbeat stopped for', playerUser.deviceName);
+      console.log('💔 Heartbeat stopped for', player.name);
     };
-  }, [playerReady, playerUser]);
+  }, [playerReady, player]);
 
   // Controls
   const togglePlay = async () => {
     playerRef.current?.togglePlay();
     await new Promise(r => setTimeout(r, 500));
     const state = playerRef.current?.getState?.();
-    if (state) await syncPlayerStatus(state, playerUser);
+    if (state) await syncPlayerStatus(state, player);
   };
   
   const nextTrack = async () => {
     playerRef.current?.nextTrack();
     await new Promise(r => setTimeout(r, 500));
     const state = playerRef.current?.getState?.();
-    if (state) await syncPlayerStatus(state, playerUser);
+    if (state) await syncPlayerStatus(state, player);
   };
   
   const prevTrack = async () => {
     playerRef.current?.previousTrack();
     await new Promise(r => setTimeout(r, 500));
     const state = playerRef.current?.getState?.();
-    if (state) await syncPlayerStatus(state, playerUser);
+    if (state) await syncPlayerStatus(state, player);
   };
 
   const handleVolume = async (val) => {
     const v = Number(val) / 100;
     setVolume(v);
     await playerRef.current?.setVolume(v);
-    // Sync volume to PlayerDevice
+    // Sync volume to Player
     try {
-      const devices = await base44.entities.PlayerDevice.list();
-      const device = devices.find(d => d.userId === playerUser.id);
-      if (device) {
-        await base44.entities.PlayerDevice.update(device.id, {
-          volume: Math.round(v * 100),
-          isPaired: true,
-          isActive: true,
-          userId: playerUser.id,
-          lastSeen: new Date().toISOString(),
-        });
-      }
+      await base44.entities.Player.update(player.id, {
+        volume: Math.round(v * 100),
+        lastSeen: new Date().toISOString(),
+      });
     } catch (e) {
       console.error('Volume sync failed:', e);
     }
@@ -325,7 +315,7 @@ export default function PlayerNew() {
     try {
       const res = await invoke('spotifyAccountControl', {
         action: 'playPlaylist',
-        accountId: playerUser.spotifyAccountId,
+        accountId: provider.id,
         contextUri: pl.providerPlaylistUri,
         deviceId: deviceId,
       });
@@ -336,7 +326,7 @@ export default function PlayerNew() {
         // Sync status nach Playlist-Start
         await new Promise(r => setTimeout(r, 800));
         const state = playerRef.current?.getState?.();
-        if (state) await syncPlayerStatus(state, playerUser);
+        if (state) await syncPlayerStatus(state, player);
       } else {
         toast.error(res.data?.error || 'Starten fehlgeschlagen.');
       }
@@ -349,7 +339,7 @@ export default function PlayerNew() {
 
   const handleLogout = () => {
     localStorage.removeItem('playerSessionToken');
-    localStorage.removeItem('playerUser');
+    localStorage.removeItem('player');
     window.location.reload();
   };
 
@@ -364,10 +354,10 @@ export default function PlayerNew() {
     );
   }
 
-  if (!playerUser) {
+  if (!player) {
     return <PlayerLogin onLoginSuccess={() => {
-      const user = JSON.parse(localStorage.getItem('playerUser'));
-      setPlayerUser(user);
+      const p = JSON.parse(localStorage.getItem('player'));
+      setPlayer(p);
     }} />;
   }
 
@@ -388,7 +378,7 @@ export default function PlayerNew() {
           </div>
           <div>
             <p className="font-black text-xs gradient-text">StudioSoundSet</p>
-            <p className="text-[10px] text-muted-foreground">{playerUser.deviceName}</p>
+            <p className="text-[10px] text-muted-foreground">{player.name}</p>
           </div>
         </div>
         <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 gap-1">
@@ -397,7 +387,7 @@ export default function PlayerNew() {
         </Button>
       </div>
 
-      {playerUser && (
+      {player && (
         <div className="w-full max-w-sm space-y-4">
           {/* Status */}
           <div className="flex items-center justify-between text-xs">

@@ -1,0 +1,106 @@
+{
+  "name": "Player",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Player Name (z.B. 'Player 1')"
+    },
+    "zoneId": {
+      "type": "string",
+      "description": "Zugeordnete Zone"
+    },
+    "email": {
+      "type": "string",
+      "description": "Player Email (player-xxx@studio)"
+    },
+    "passwordHash": {
+      "type": "string",
+      "description": "Gehashtes Passwort"
+    },
+    "deviceId": {
+      "type": "string",
+      "description": "Eindeutige Ger\u00e4te-ID (beim Pairing generiert)"
+    },
+    "pairingToken": {
+      "type": "string",
+      "description": "Token f\u00fcr Pairing (15 Min g\u00fcltig)"
+    },
+    "pairingExpiresAt": {
+      "type": "string",
+      "description": "Wann Pairing Token verf\u00e4llt"
+    },
+    "isPaired": {
+      "type": "boolean",
+      "default": false,
+      "description": "Gekoppelt?"
+    },
+    "pairedAt": {
+      "type": "string",
+      "description": "Zeitstempel Kopplung"
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": true,
+      "description": "Player aktiv?"
+    },
+    "isOnline": {
+      "type": "boolean",
+      "default": false,
+      "description": "Gerade verbunden?"
+    },
+    "lastSeen": {
+      "type": "string",
+      "description": "Zuletzt aktiv"
+    },
+    "lastLoginAt": {
+      "type": "string",
+      "description": "Letzter Login"
+    },
+    "currentTrackName": {
+      "type": "string",
+      "description": "Aktueller Track"
+    },
+    "currentTrackArtist": {
+      "type": "string",
+      "description": "K\u00fcnstler"
+    },
+    "currentTrackAlbum": {
+      "type": "string",
+      "description": "Album"
+    },
+    "currentTrackCoverUrl": {
+      "type": "string",
+      "description": "Cover URL"
+    },
+    "currentPlaylistUri": {
+      "type": "string",
+      "description": "Aktuelle Playlist URI"
+    },
+    "isPlaying": {
+      "type": "boolean",
+      "default": false,
+      "description": "Gerade am Abspielen?"
+    },
+    "volume": {
+      "type": "number",
+      "default": 50,
+      "description": "Lautst\u00e4rke (0-100)"
+    },
+    "progressMs": {
+      "type": "number",
+      "default": 0,
+      "description": "Aktueller Fortschritt in ms"
+    },
+    "lastStatusUpdate": {
+      "type": "string",
+      "description": "Letztes Status Update"
+    }
+  },
+  "required": [
+    "name",
+    "zoneId",
+    "email",
+    "passwordHash"
+  ]
+}

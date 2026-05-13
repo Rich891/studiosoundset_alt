@@ -2,37 +2,43 @@
   "name": "Playlist",
   "type": "object",
   "properties": {
-    "spotifyAccountId": {
-      "type": "string"
-    },
-    "zoneId": {
-      "type": "string"
+    "providerId": {
+      "type": "string",
+      "description": "Provider (Spotify Account)"
     },
     "providerPlaylistId": {
-      "type": "string"
+      "type": "string",
+      "description": "Spotify Playlist ID"
     },
     "providerPlaylistUri": {
-      "type": "string"
+      "type": "string",
+      "description": "Spotify Playlist URI"
     },
     "name": {
-      "type": "string"
+      "type": "string",
+      "description": "Playlist Name"
     },
     "description": {
-      "type": "string"
+      "type": "string",
+      "description": "Beschreibung"
     },
     "owner": {
-      "type": "string"
+      "type": "string",
+      "description": "Playlist Owner"
     },
     "coverUrl": {
-      "type": "string"
+      "type": "string",
+      "description": "Cover URL"
     },
     "totalTracks": {
       "type": "number",
-      "default": 0
+      "default": 0,
+      "description": "Anzahl Tracks"
     },
     "importedTracks": {
       "type": "number",
-      "default": 0
+      "default": 0,
+      "description": "Importierte Tracks"
     },
     "syncStatus": {
       "type": "string",
@@ -43,14 +49,16 @@
         "error",
         "not_imported"
       ],
-      "default": "not_imported"
+      "default": "not_imported",
+      "description": "Sync Status"
     },
     "lastSyncAt": {
-      "type": "string"
+      "type": "string",
+      "description": "Letzter Sync"
     }
   },
   "required": [
     "name",
-    "spotifyAccountId"
+    "providerId"
   ]
 }

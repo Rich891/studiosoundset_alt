@@ -30,7 +30,7 @@ export default function PlayerLogin({ onLoginSuccess }) {
       if (response.data?.success && response.data?.sessionToken) {
         // Speichere Session
         localStorage.setItem('playerSessionToken', response.data.sessionToken);
-        localStorage.setItem('playerUser', JSON.stringify(response.data.playerUser));
+        localStorage.setItem('player', JSON.stringify(response.data.player));
         
         toast.success('Angemeldet!');
         onLoginSuccess();
