@@ -7,8 +7,15 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const SPOTIFY_API = 'https://api.spotify.com/v1';
 const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
-const CLIENT_ID = Deno.env.get('SPOTIFY_CLIENT_ID');
-const CLIENT_SECRET = Deno.env.get('SPOTIFY_CLIENT_SECRET');
+
+async function getAccountCredentials(base44, accountId) {
+  const account = await base44.asServiceRole.entities.SpotifyAccount.get(accountId);
+  if (!account) throw new Error('SpotifyAccount not found');
+  const clientId = account.clientId || Deno.env.get('SPOTIFY_CLIENT_ID');
+  const clientSecret = account.clientSecret || Deno.env.get('SPOTIFY_CLIENT_SECRET');
+  if (!clientId || !clientSecret) throw new Error('Client ID oder Client Secret fehlt für diesen Account');
+  return { clientId, clientSecret };
+}
 
 async function upsertSetting(base44, key, value, category = 'spotify_tokens') {
   const existing = await base44.asServiceRole.entities.AppSetting.filter({ key });
@@ -31,7 +38,8 @@ async function getTokens(base44, accountId) {
 }
 
 async function refreshAccessToken(base44, accountId, refreshToken) {
-  const authHeader = 'Basic ' + btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
+  const { clientId, clientSecret } = await getAccountCredentials(base44, accountId);
+  const authHeader = 'Basic ' + btoa(`${clientId}:${clientSecret}`);
   const res = await fetch(SPOTIFY_TOKEN_URL, {
     method: 'POST',
     headers: { Authorization: authHeader, 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -107,7 +115,14 @@ Deno.serve(async (req) => {
   if (action === 'getAuthUrl') {
     const { redirectUri, accountId: aid } = body;
     if (!redirectUri || !aid) return Response.json({ error: 'Missing redirectUri or accountId' }, { status: 400 });
-    if (!CLIENT_ID) return Response.json({ error: 'SPOTIFY_CLIENT_ID not configured' }, { status: 500 });
+
+    let clientId;
+    try {
+      const creds = await getAccountCredentials(base44, aid);
+      clientId = creds.clientId;
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 400 });
+    }
 
     const scopes = [
       'user-read-playback-state',
@@ -119,7 +134,7 @@ Deno.serve(async (req) => {
     ].join(' ');
 
     const params = new URLSearchParams({
-      client_id: CLIENT_ID,
+      client_id: clientId,
       response_type: 'code',
       redirect_uri: redirectUri,
       scope: scopes,
@@ -133,7 +148,16 @@ Deno.serve(async (req) => {
     const { code, redirectUri, accountId: aid } = body;
     if (!code || !redirectUri || !aid) return Response.json({ error: 'Missing code, redirectUri or accountId' }, { status: 400 });
 
-    const authHeader = 'Basic ' + btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
+    let clientId, clientSecret;
+    try {
+      const creds = await getAccountCredentials(base44, aid);
+      clientId = creds.clientId;
+      clientSecret = creds.clientSecret;
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 400 });
+    }
+
+    const authHeader = 'Basic ' + btoa(`${clientId}:${clientSecret}`);
     const res = await fetch(SPOTIFY_TOKEN_URL, {
       method: 'POST',
       headers: { Authorization: authHeader, 'Content-Type': 'application/x-www-form-urlencoded' },

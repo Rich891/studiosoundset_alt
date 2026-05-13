@@ -8,6 +8,14 @@
     "zoneId": {
       "type": "string"
     },
+    "clientId": {
+      "type": "string",
+      "description": "Spotify App Client ID (aus developer.spotify.com)"
+    },
+    "clientSecret": {
+      "type": "string",
+      "description": "Spotify App Client Secret (aus developer.spotify.com)"
+    },
     "authStatus": {
       "type": "string",
       "enum": [
@@ -57,6 +65,8 @@
     }
   },
   "required": [
-    "displayName"
+    "displayName",
+    "clientId",
+    "clientSecret"
   ]
 }

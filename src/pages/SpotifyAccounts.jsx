@@ -27,6 +27,8 @@ export default function SpotifyAccounts() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newZoneId, setNewZoneId] = useState('');
+  const [newClientId, setNewClientId] = useState('');
+  const [newClientSecret, setNewClientSecret] = useState('');
   const [expandedId, setExpandedId] = useState(null);
   const queryClient = useQueryClient();
 
@@ -41,7 +43,7 @@ export default function SpotifyAccounts() {
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.SpotifyAccount.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['spotifyAccounts'] }); setShowCreate(false); setNewName(''); setNewZoneId(''); toast.success('Account erstellt.'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['spotifyAccounts'] }); setShowCreate(false); setNewName(''); setNewZoneId(''); setNewClientId(''); setNewClientSecret(''); toast.success('Account erstellt.'); },
   });
 
   const deleteMutation = useMutation({
@@ -200,6 +202,29 @@ export default function SpotifyAccounts() {
                 className="h-11 bg-muted/30"
               />
             </div>
+            <div className="border border-border/50 rounded-lg p-4 space-y-3 bg-muted/10">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Spotify Developer App Credentials</p>
+              <div>
+                <Label className="text-sm font-semibold mb-2 block">Client ID *</Label>
+                <Input
+                  value={newClientId}
+                  onChange={e => setNewClientId(e.target.value)}
+                  placeholder="z. B. aefead8812d34ebfb862bf497c13326c"
+                  className="h-11 bg-muted/30 font-mono text-xs"
+                />
+              </div>
+              <div>
+                <Label className="text-sm font-semibold mb-2 block">Client Secret *</Label>
+                <Input
+                  type="password"
+                  value={newClientSecret}
+                  onChange={e => setNewClientSecret(e.target.value)}
+                  placeholder="Dein Spotify Client Secret"
+                  className="h-11 bg-muted/30 font-mono text-xs"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">Zu finden auf <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-primary underline">developer.spotify.com/dashboard</a></p>
+            </div>
             <div>
               <Label className="text-sm font-semibold mb-2 block">Zone zuweisen</Label>
               <Select value={newZoneId} onValueChange={setNewZoneId}>
@@ -209,15 +234,12 @@ export default function SpotifyAccounts() {
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Nach dem Erstellen kannst du den Account mit Spotify verbinden (OAuth).
-            </p>
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setShowCreate(false)}>Abbrechen</Button>
               <Button
                 className="flex-1 bg-primary hover:bg-primary/90 font-bold"
-                disabled={!newName.trim() || createMutation.isPending}
-                onClick={() => createMutation.mutate({ displayName: newName.trim(), zoneId: newZoneId || undefined, authStatus: 'disconnected', tokenStatus: 'missing' })}
+                disabled={!newName.trim() || !newClientId.trim() || !newClientSecret.trim() || createMutation.isPending}
+                onClick={() => createMutation.mutate({ displayName: newName.trim(), clientId: newClientId.trim(), clientSecret: newClientSecret.trim(), zoneId: newZoneId || undefined, authStatus: 'disconnected', tokenStatus: 'missing' })}
               >
                 {createMutation.isPending ? 'Erstelle...' : 'Erstellen'}
               </Button>
