@@ -92,26 +92,40 @@ function ImportModal({ account, onImport, onClose }) {
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="bg-card border-border max-w-2xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="bg-card border-border max-w-2xl flex flex-col" style={{ maxHeight: '85vh' }}>
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>Playlists importieren — {account.displayName}</DialogTitle>
         </DialogHeader>
-        {error && <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-sm text-red-400"><AlertCircle className="w-4 h-4 flex-shrink-0" />{error}</div>}
+        {error && <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-sm text-red-400 flex-shrink-0"><AlertCircle className="w-4 h-4 flex-shrink-0" />{error}</div>}
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-10"><RefreshCw className="w-5 h-5 animate-spin text-primary" /><span className="text-muted-foreground">Lade Playlists...</span></div>
+          <div className="flex items-center justify-center gap-2 py-10"><RefreshCw className="w-5 h-5 animate-spin text-primary" /><span className="text-muted-foreground">Lade Playlists von Spotify...</span></div>
         ) : (
-          <div className="space-y-2">
+          <div className="overflow-y-auto flex-1 space-y-2 pr-1">
             {spotifyPlaylists.map(pl => (
-              <button key={pl.id} className="w-full flex items-center gap-3 p-3 rounded-xl border border-border/30 hover:border-primary/50 hover:bg-primary/5 transition-all text-left disabled:opacity-60 disabled:cursor-wait" onClick={() => handleImport(pl)} disabled={importing === pl.id}>
-                {pl.images?.[0]?.url ? <img src={pl.images[0].url} alt={pl.name} className="w-12 h-12 rounded-lg flex-shrink-0" /> : <div className="w-12 h-12 bg-muted/30 rounded-lg flex items-center justify-center flex-shrink-0"><Music2 className="w-5 h-5 text-muted-foreground" /></div>}
+              <div
+                key={pl.id}
+                className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer select-none
+                  ${importing === pl.id
+                    ? 'border-primary/50 bg-primary/5 opacity-70 pointer-events-none'
+                    : 'border-border/30 hover:border-primary/50 hover:bg-primary/5'
+                  }`}
+                onClick={() => { if (!importing) handleImport(pl); }}
+              >
+                {pl.images?.[0]?.url
+                  ? <img src={pl.images[0].url} alt={pl.name} className="w-12 h-12 rounded-lg flex-shrink-0 object-cover" />
+                  : <div className="w-12 h-12 bg-muted/30 rounded-lg flex items-center justify-center flex-shrink-0"><Music2 className="w-5 h-5 text-muted-foreground" /></div>
+                }
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold truncate">{pl.name}</p>
-                  <p className="text-xs text-muted-foreground">{pl.tracks?.total} Songs · {pl.owner?.display_name}</p>
+                  <p className="text-xs text-muted-foreground">{pl.tracks?.total ?? pl.items?.total ?? 0} Songs · {pl.owner?.display_name}</p>
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0 text-sm font-medium text-primary">
-                  {importing === pl.id ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Importiert...</> : <><Download className="w-3.5 h-3.5" /> Importieren</>}
+                  {importing === pl.id
+                    ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /><span>Importiert...</span></>
+                    : <><Download className="w-3.5 h-3.5" /><span>Importieren</span></>
+                  }
                 </div>
-              </button>
+              </div>
             ))}
             {spotifyPlaylists.length === 0 && !loading && !error && (
               <p className="text-center text-muted-foreground py-6 text-sm">Keine Playlists für diesen Account gefunden.</p>
