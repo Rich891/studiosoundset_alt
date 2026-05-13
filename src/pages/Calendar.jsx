@@ -18,22 +18,22 @@ const DAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samsta
 const DAY_INDICES = [1, 2, 3, 4, 5, 6, 0];
 
 const defaultForm = {
-  zoneId: '', playlistId: '', title: '', dayOfWeek: 1,
+  playerDeviceId: '', playlistId: '', title: '', dayOfWeek: 1,
   startTime: '08:00', endTime: '10:00', repeatWeekly: true,
-  baseVolume: 50, volumeRampEnabled: false, startVolume: 40, endVolume: 60,
+  baseVolume: 50, rampEnabled: false, startVolume: 40, endVolume: 60,
   rampMode: 'continuous', isActive: true,
 };
 
 export default function Calendar() {
-  const [selectedZone, setSelectedZone] = useState(null);
+  const [selectedDevice, setSelectedDevice] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editBlock, setEditBlock] = useState(null);
   const [formData, setFormData] = useState(defaultForm);
   const queryClient = useQueryClient();
 
-  const { data: blocks = [] }    = useQuery({ queryKey: ['scheduleBlocks'], queryFn: () => base44.entities.ScheduleBlock.list() });
-  const { data: zones = [] }     = useQuery({ queryKey: ['zones'],          queryFn: () => base44.entities.Zone.list() });
-  const { data: playlists = [] } = useQuery({ queryKey: ['playlists'],      queryFn: () => base44.entities.Playlist.list() });
+  const { data: blocks = [] }       = useQuery({ queryKey: ['scheduleBlocks'], queryFn: () => base44.entities.ScheduleBlock.list() });
+  const { data: playerDevices = [] } = useQuery({ queryKey: ['playerDevices'], queryFn: () => base44.entities.PlayerDevice.list() });
+  const { data: playlists = [] }     = useQuery({ queryKey: ['playlists'],      queryFn: () => base44.entities.Playlist.list() });
 
   const saveMutation = useMutation({
     mutationFn: (data) => editBlock
@@ -56,7 +56,7 @@ export default function Calendar() {
 
   const openForm = (dayOfWeek, startTime = '08:00', endTime = '10:00') => {
     setEditBlock(null);
-    setFormData({ ...defaultForm, dayOfWeek, startTime, endTime, zoneId: selectedZone || '' });
+    setFormData({ ...defaultForm, dayOfWeek, startTime, endTime, playerDeviceId: selectedDevice || '' });
     setShowForm(true);
   };
 
@@ -69,7 +69,7 @@ export default function Calendar() {
   const closeForm = () => { setShowForm(false); setEditBlock(null); };
   const upd = (k, v) => setFormData(p => ({ ...p, [k]: v }));
 
-  const filteredBlocks = selectedZone ? blocks.filter(b => b.zoneId === selectedZone) : blocks;
+  const filteredBlocks = selectedDevice ? blocks.filter(b => b.playerDeviceId === selectedDevice) : blocks;
 
   return (
     <div className="p-4 lg:p-8 space-y-6 max-w-[1600px] mx-auto">
@@ -92,54 +92,49 @@ export default function Calendar() {
         </Button>
       </div>
 
-      {/* Zone Filter */}
-      {zones.length > 0 && (
+      {/* Player Device Filter */}
+      {playerDevices.length > 0 && (
         <div className="flex flex-wrap gap-2">
           <button
-            onClick={() => setSelectedZone(null)}
+            onClick={() => setSelectedDevice(null)}
             className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all duration-150 ${
-              selectedZone === null
+              selectedDevice === null
                 ? 'bg-primary text-white border-primary shadow-[0_0_15px_hsl(var(--primary)/0.4)]'
                 : 'border-border/40 text-muted-foreground hover:border-border hover:text-foreground'
             }`}
           >
-            Alle Zonen
+            Alle Geräte
           </button>
-          {zones.map(zone => (
+          {playerDevices.map(device => (
             <button
-              key={zone.id}
-              onClick={() => setSelectedZone(zone.id)}
+              key={device.id}
+              onClick={() => setSelectedDevice(device.id)}
               className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all duration-150 ${
-                selectedZone === zone.id
-                  ? 'text-white'
-                  : 'border-border/40 text-muted-foreground hover:text-foreground'
+                selectedDevice === device.id
+                  ? 'bg-primary text-white border-primary'
+                  : 'border-border/40 text-muted-foreground hover:border-border hover:text-foreground'
               }`}
-              style={
-                selectedZone === zone.id
-                  ? { background: zone.color, borderColor: zone.color, boxShadow: `0 0 15px ${zone.color}60` }
-                  : { borderColor: zone.color + '60', color: zone.color }
-              }
             >
-              {zone.name}
+              {device.name}
             </button>
           ))}
         </div>
       )}
 
       {/* Calendar or Empty */}
-      {zones.length === 0 ? (
+      {playerDevices.length === 0 ? (
         <div className="bento-panel border-dashed border-primary/20 p-16 text-center">
           <Clock className="w-16 h-16 text-muted-foreground/30 mx-auto mb-4" />
-          <h3 className="text-xl font-bold mb-2">Keine Zonen vorhanden</h3>
-          <p className="text-muted-foreground mb-6">Erstelle zuerst eine Zone in der Geräteverwaltung.</p>
-          <a href="/devices/add">
-            <Button className="bg-primary hover:bg-primary/90 h-11 px-6">Zur Geräteverwaltung</Button>
+          <h3 className="text-xl font-bold mb-2">Keine Player vorhanden</h3>
+          <p className="text-muted-foreground mb-6">Erstelle zuerst einen Player in der Geräteverwaltung.</p>
+          <a href="/manage-players">
+            <Button className="bg-primary hover:bg-primary/90 h-11 px-6">Zur Player-Verwaltung</Button>
           </a>
         </div>
       ) : (
         <CalendarGrid
           blocks={filteredBlocks}
-          zones={zones}
+          playerDevices={playerDevices}
           onOpenForm={openForm}
           onEdit={editForm}
           onDelete={(id) => deleteMutation.mutate(id)}
@@ -166,18 +161,15 @@ export default function Calendar() {
                   <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Zeitfenster</h3>
 
                   <div>
-                    <Label className="text-sm font-semibold mb-2 block">Zone *</Label>
-                    <Select value={formData.zoneId} onValueChange={v => upd('zoneId', v)}>
+                    <Label className="text-sm font-semibold mb-2 block">Player *</Label>
+                    <Select value={formData.playerDeviceId} onValueChange={v => upd('playerDeviceId', v)}>
                       <SelectTrigger className="h-11 bg-muted/30">
-                        <SelectValue placeholder="Zone auswählen" />
+                        <SelectValue placeholder="Player auswählen" />
                       </SelectTrigger>
                       <SelectContent>
-                        {zones.map(z => (
-                          <SelectItem key={z.id} value={z.id}>
-                            <span className="flex items-center gap-2">
-                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: z.color }} />
-                              {z.name}
-                            </span>
+                        {playerDevices.map(d => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -237,14 +229,14 @@ export default function Calendar() {
 
                   <div className="p-4 bg-muted/20 rounded-xl space-y-4">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <TrendingUp className="w-4 h-4 text-primary" />
-                        <Label className="text-sm font-bold">Lautstärke-Rampe</Label>
-                      </div>
-                      <Switch checked={formData.volumeRampEnabled} onCheckedChange={v => upd('volumeRampEnabled', v)} />
-                    </div>
+                       <div className="flex items-center gap-2">
+                         <TrendingUp className="w-4 h-4 text-primary" />
+                         <Label className="text-sm font-bold">Lautstärke-Rampe</Label>
+                       </div>
+                       <Switch checked={formData.rampEnabled} onCheckedChange={v => upd('rampEnabled', v)} />
+                     </div>
 
-                    {!formData.volumeRampEnabled ? (
+                     {!formData.rampEnabled ? (
                       <div>
                         <div className="flex items-center justify-between mb-3">
                           <Label className="text-sm font-semibold">Grundlautstärke</Label>
@@ -299,7 +291,7 @@ export default function Calendar() {
                   </div>
 
                   {/* Ramp Preview */}
-                  {formData.volumeRampEnabled && formData.startTime && formData.endTime && (
+                   {formData.rampEnabled && formData.startTime && formData.endTime && (
                     <RampPreview
                       startTime={formData.startTime}
                       endTime={formData.endTime}
@@ -326,10 +318,10 @@ export default function Calendar() {
                   <X className="w-4 h-4" /> Abbrechen
                 </Button>
                 <Button
-                  className="flex-1 h-11 bg-primary hover:bg-primary/90 gap-2 font-bold"
-                  onClick={() => saveMutation.mutate(formData)}
-                  disabled={saveMutation.isPending || !formData.zoneId}
-                >
+                   className="flex-1 h-11 bg-primary hover:bg-primary/90 gap-2 font-bold"
+                   onClick={() => saveMutation.mutate(formData)}
+                   disabled={saveMutation.isPending || !formData.playerDeviceId}
+                 >
                   <Save className="w-4 h-4" />
                   {saveMutation.isPending ? 'Wird gespeichert...' : 'Speichern'}
                 </Button>
