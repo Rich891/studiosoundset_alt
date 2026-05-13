@@ -21,16 +21,19 @@ import Logs from './pages/Logs';
 import Settings from './pages/Settings';
 import NotFound from './pages/NotFound';
 import Player from './pages/Player';
+import AddPlayerDevice from './pages/AddPlayerDevice';
+import PlayerPairing from './pages/PlayerPairing';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, isAuthenticated } = useAuth();
   const location = useLocation();
 
-  // SpotifyCallback NEVER gets blocked — Spotify redirects lose the session cookie
-  if (location.pathname === '/spotify-callback') {
+  // SpotifyCallback & PlayerPairing NEVER get blocked — public routes
+  if (location.pathname === '/spotify-callback' || location.pathname === '/player-pairing') {
     return (
       <Routes>
         <Route path="/spotify-callback" element={<SpotifyCallback />} />
+        <Route path="/player-pairing" element={<PlayerPairing />} />
       </Routes>
     );
   }
@@ -70,6 +73,7 @@ const AuthenticatedApp = () => {
         <Route path="/logs" element={<Logs />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/player" element={<Player />} />
+        <Route path="/add-player-device" element={<AddPlayerDevice />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

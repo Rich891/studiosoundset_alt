@@ -1,0 +1,53 @@
+{
+  "name": "PlayerDevice",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name des Player-Ger\u00e4ts (z.B. 'Tennishalle S\u00fcd')"
+    },
+    "spotifyAccountId": {
+      "type": "string",
+      "description": "Zugewiesener Spotify Account"
+    },
+    "zoneId": {
+      "type": "string",
+      "description": "Zugewiesene Zone"
+    },
+    "pairingToken": {
+      "type": "string",
+      "description": "Eindeutiger Token f\u00fcr Ger\u00e4te-Pairing (wird beim Scannen verwendet)"
+    },
+    "pairingExpiresAt": {
+      "type": "string",
+      "description": "Wann der Pairing-Token abl\u00e4uft (15 Min nach Erstellung)"
+    },
+    "deviceId": {
+      "type": "string",
+      "description": "Eindeutige Ger\u00e4te-ID (wird beim Pairing generiert)"
+    },
+    "isPaired": {
+      "type": "boolean",
+      "default": false,
+      "description": "Ob das Ger\u00e4t bereits gekoppelt wurde"
+    },
+    "pairedAt": {
+      "type": "string",
+      "description": "Zeitstempel der erfolgreichen Kopplung"
+    },
+    "lastSeen": {
+      "type": "string",
+      "description": "Zuletzt aktiv"
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": true,
+      "description": "Ob das Ger\u00e4t aktiv ist"
+    }
+  },
+  "required": [
+    "name",
+    "spotifyAccountId",
+    "pairingToken"
+  ]
+}

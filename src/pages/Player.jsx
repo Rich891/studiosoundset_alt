@@ -28,6 +28,7 @@ export default function Player() {
   const [status, setStatus] = useState('idle'); // idle | loading | ready | error
   const [showPlaylists, setShowPlaylists] = useState(false);
   const [loadingPlaylist, setLoadingPlaylist] = useState(null);
+  const [pairedDevice, setPairedDevice] = useState(null);
 
   const playerRef = useRef(null);
   const sdkReadyRef = useRef(false);
@@ -40,6 +41,31 @@ export default function Player() {
     queryKey: ['playlists'],
     queryFn: () => base44.entities.Playlist.list('-lastSyncAt'),
   });
+
+  // Check for paired device on mount
+  useEffect(() => {
+    const storedDeviceId = localStorage.getItem('playerDeviceId');
+    const storedToken = localStorage.getItem('playerToken');
+    if (storedDeviceId && storedToken) {
+      setDeviceId(storedDeviceId);
+      // Find and set the paired device
+      const loadPairedDevice = async () => {
+        try {
+          const devices = await base44.entities.PlayerDevice.filter({
+            pairingToken: storedToken,
+            isPaired: true,
+          });
+          if (devices.length > 0) {
+            setPairedDevice(devices[0]);
+            setSelectedAccountId(devices[0].spotifyAccountId);
+          }
+        } catch (e) {
+          console.warn('Failed to load paired device:', e);
+        }
+      };
+      loadPairedDevice();
+    }
+  }, []);
 
   const connectedAccounts = accounts.filter(a => a.authStatus === 'connected');
 
@@ -179,6 +205,17 @@ export default function Player() {
       if (res.data?.success) {
         toast.success(`▶ "${pl.name}"`);
         setShowPlaylists(false);
+
+        // Update device last seen
+        if (pairedDevice) {
+          try {
+            await base44.entities.PlayerDevice.update(pairedDevice.id, {
+              lastSeen: new Date().toISOString(),
+            });
+          } catch (e) {
+            console.warn('Failed to update device:', e);
+          }
+        }
       } else {
         toast.error(res.data?.error || 'Starten fehlgeschlagen.');
       }

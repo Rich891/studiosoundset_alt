@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Music2, MapPin, Radio, Calendar,
-  Settings, Activity, FileText, ChevronRight, Zap, LogOut, User, Headphones
+  Settings, Activity, FileText, ChevronRight, Zap, LogOut, User, Headphones, Plus
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
@@ -9,6 +9,7 @@ import { base44 } from '@/api/base44Client';
 const NAV = [
   { path: '/dashboard',         label: 'Dashboard',           icon: LayoutDashboard },
   { path: '/player',            label: '▶ Browser Player',    icon: Headphones,  highlight: true },
+  { path: '/add-player-device', label: '+ Neues Gerät',       icon: Plus,        highlight: true },
   { path: '/spotify-accounts',  label: 'Spotify Accounts',    icon: Music2 },
   { path: '/zones',             label: 'Zonen',               icon: MapPin },
   { path: '/now-playing',       label: 'Now Playing',         icon: Radio },
