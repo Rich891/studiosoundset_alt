@@ -19,6 +19,8 @@ function formatMs(ms) {
 }
 
 export default function Player() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [playerReady, setPlayerReady] = useState(false);
   const [playerState, setPlayerState] = useState(null);
@@ -42,33 +44,35 @@ export default function Player() {
     queryFn: () => base44.entities.Playlist.list('-lastSyncAt'),
   });
 
-  // Check for paired device on mount
+  // Check auth status on mount
   useEffect(() => {
-    const storedDeviceId = localStorage.getItem('playerDeviceId');
-    const storedEmail = localStorage.getItem('playerEmail');
-    const storedPassword = localStorage.getItem('playerPassword');
-
-    // If player credentials exist, auto-login
-    if (storedEmail && storedPassword) {
-      const autoLogin = async () => {
-        try {
-          // This would need a login endpoint - for now just set the device
-          setDeviceId(storedDeviceId);
-          // Load paired device info
-          const devices = await base44.entities.PlayerDevice.filter({
-            userId: storedEmail,
-            isPaired: true,
-          });
-          if (devices.length > 0) {
-            setPairedDevice(devices[0]);
-            setSelectedAccountId(devices[0].spotifyAccountId);
+    const checkAuth = async () => {
+      try {
+        const authenticated = await base44.auth.isAuthenticated();
+        setIsAuthenticated(authenticated);
+        
+        if (authenticated) {
+          const storedDeviceId = localStorage.getItem('playerDeviceId');
+          if (storedDeviceId) {
+            setDeviceId(storedDeviceId);
+            // Load paired device info
+            const devices = await base44.entities.PlayerDevice.filter({
+              deviceId: storedDeviceId,
+              isPaired: true,
+            });
+            if (devices.length > 0) {
+              setPairedDevice(devices[0]);
+              setSelectedAccountId(devices[0].spotifyAccountId);
+            }
           }
-        } catch (e) {
-          console.warn('Auto-login failed:', e);
         }
-      };
-      autoLogin();
-    }
+      } catch (e) {
+        console.warn('Auth check failed:', e);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+    checkAuth();
   }, []);
 
   const connectedAccounts = accounts.filter(a => a.authStatus === 'connected');
@@ -240,6 +244,34 @@ export default function Player() {
   const accountPlaylists = playlists.filter(p =>
     !selectedAccountId || p.spotifyAccountId === selectedAccountId
   );
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen aurora-bg flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">Lade Player...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen aurora-bg flex items-center justify-center p-4">
+        <div className="w-full max-w-sm text-center space-y-4">
+          <p className="text-red-400 font-bold">Authentifizierung erforderlich</p>
+          <p className="text-sm text-muted-foreground">Bitte melden Sie sich an, um fortzufahren.</p>
+          <button
+            onClick={() => base44.auth.redirectToLogin()}
+            className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 font-semibold"
+          >
+            Zur Anmeldung
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen aurora-bg flex flex-col items-center justify-center p-4">

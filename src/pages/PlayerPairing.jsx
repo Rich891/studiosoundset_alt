@@ -53,6 +53,7 @@ export default function PlayerPairing() {
         const playerRes = await invoke('createPlayerUser', {
           deviceId: id,
           deviceName: dev.name,
+          playerDeviceId: dev.id,
         });
 
         if (!playerRes.data?.success) {
@@ -61,10 +62,9 @@ export default function PlayerPairing() {
 
         const { playerEmail, playerPassword } = playerRes.data;
 
-        // Mark as paired + store user
+        // Mark as paired (credentials already stored by createPlayerUser)
         await base44.entities.PlayerDevice.update(dev.id, {
           deviceId: id,
-          userId: playerEmail,
           isPaired: true,
           pairedAt: new Date().toISOString(),
           lastSeen: new Date().toISOString(),

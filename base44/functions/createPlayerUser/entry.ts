@@ -3,25 +3,35 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const { deviceId, deviceName } = await req.json();
+    const { deviceId, deviceName, playerDeviceId } = await req.json();
 
-    if (!deviceId || !deviceName) {
-      return Response.json({ error: 'deviceId and deviceName required' }, { status: 400 });
+    if (!deviceId || !deviceName || !playerDeviceId) {
+      return Response.json({ error: 'deviceId, deviceName, playerDeviceId required' }, { status: 400 });
     }
 
-    // Generate random password (24 chars)
+    // Generate random password (24 chars alphanumeric)
     const password = Array.from(crypto.getRandomValues(new Uint8Array(18)))
       .map(b => b.toString(16).padStart(2, '0'))
       .join('')
       .substring(0, 24);
 
-    // Create player user with email format: player-[deviceId]@studio
+    // Player email format: player-[deviceId]@studio
     const playerEmail = `player-${deviceId}@studio`;
 
-    // Invite user as "user" role (using service role for public pairing flow)
-    await base44.asServiceRole.users.inviteUser(playerEmail, 'user');
+    // Invite user as "user" role
+    try {
+      await base44.asServiceRole.users.inviteUser(playerEmail, 'user');
+    } catch (e) {
+      // If user already exists, that's fine - continue
+      console.warn('User invite failed (may already exist):', e.message);
+    }
 
-    // Return the player credentials for the device to use
+    // Store credentials in PlayerDevice for the player to use
+    await base44.asServiceRole.entities.PlayerDevice.update(playerDeviceId, {
+      userId: playerEmail,
+      playerPassword: password, // This will be stored as plain text - only accessible to the player device
+    });
+
     return Response.json({
       success: true,
       playerEmail,

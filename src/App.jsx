@@ -23,6 +23,7 @@ import NotFound from './pages/NotFound';
 import Player from './pages/Player';
 import AddPlayerDevice from './pages/AddPlayerDevice';
 import PlayerPairing from './pages/PlayerPairing';
+import PlayerUsers from './pages/PlayerUsers';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, isAuthenticated } = useAuth();
@@ -74,6 +75,7 @@ const AuthenticatedApp = () => {
         <Route path="/settings" element={<Settings />} />
         <Route path="/player" element={<Player />} />
         <Route path="/add-player-device" element={<AddPlayerDevice />} />
+        <Route path="/player-users" element={<PlayerUsers />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
