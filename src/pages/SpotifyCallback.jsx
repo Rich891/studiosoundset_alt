@@ -31,8 +31,9 @@ export default function SpotifyCallback() {
       try {
         // Get account name for display
         try {
-          const acc = await base44.entities.SpotifyAccount.filter({ id: state });
-          if (acc?.[0]) setAccountName(acc[0].displayName);
+          const accounts = await base44.entities.SpotifyAccount.list();
+          const acc = accounts.find(a => a.id === state);
+          if (acc) setAccountName(acc.displayName);
         } catch {}
 
         const redirectUri = `${window.location.origin}/spotify-callback`;

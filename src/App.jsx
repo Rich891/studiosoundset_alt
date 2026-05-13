@@ -22,7 +22,7 @@ import Settings from './pages/Settings';
 import NotFound from './pages/NotFound';
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, isAuthenticated } = useAuth();
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
@@ -38,6 +38,12 @@ const AuthenticatedApp = () => {
   if (authError) {
     if (authError.type === 'user_not_registered') return <UserNotRegisteredError />;
     if (authError.type === 'auth_required') { navigateToLogin(); return null; }
+  }
+
+  // If not authenticated, redirect to login
+  if (!isLoadingAuth && !isAuthenticated) {
+    navigateToLogin();
+    return null;
   }
 
   return (
