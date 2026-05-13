@@ -250,7 +250,10 @@ function PlayerDeviceCard({ device, account, playlists }) {
 export default function NowPlaying() {
   const { data: devices = [] } = useQuery({
     queryKey: ['playerDevices'],
-    queryFn: () => base44.entities.PlayerDevice.filter({ isPaired: true, isActive: true }),
+    queryFn: async () => {
+      const allDevices = await base44.entities.PlayerDevice.list();
+      return allDevices.filter(d => d.isPaired && d.isActive);
+    },
     refetchInterval: 15000, // Auto-refresh alle 15 Sekunden
   });
 

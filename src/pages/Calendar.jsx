@@ -32,7 +32,11 @@ export default function Calendar() {
   const queryClient = useQueryClient();
 
   const { data: blocks = [] }       = useQuery({ queryKey: ['scheduleBlocks'], queryFn: () => base44.entities.ScheduleBlock.list() });
-  const { data: allPlayerDevices = [] } = useQuery({ queryKey: ['playerDevices'], queryFn: () => base44.entities.PlayerDevice.list() });
+  const { data: allPlayerDevices = [] } = useQuery({
+    queryKey: ['playerDevices'],
+    queryFn: () => base44.entities.PlayerDevice.list(),
+    refetchInterval: 15000,
+  });
   const { data: playlists = [] }     = useQuery({ queryKey: ['playlists'],      queryFn: () => base44.entities.Playlist.list() });
 
   // Nur gekoppelte Geräte zeigen
