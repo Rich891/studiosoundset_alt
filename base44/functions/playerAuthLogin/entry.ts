@@ -9,8 +9,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Email und Passwort erforderlich' }, { status: 400 });
     }
 
-    // Suche Player-User
-    const playerUsers = await base44.asServiceRole.entities.PlayerUser.filter({ email });
+    // Suche Player-User (benutze asServiceRole - Player sind nicht reguläre Users)
+    let playerUsers;
+    try {
+      playerUsers = await base44.asServiceRole.entities.PlayerUser.filter({ email });
+    } catch (e) {
+      console.error('Filter error, versuche list:', e);
+      const allUsers = await base44.asServiceRole.entities.PlayerUser.list();
+      playerUsers = allUsers.filter(u => u.email === email);
+    }
 
     if (playerUsers.length === 0) {
       return Response.json({ error: 'Player nicht gefunden' }, { status: 401 });

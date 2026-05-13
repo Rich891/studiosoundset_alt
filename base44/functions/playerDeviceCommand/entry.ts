@@ -15,8 +15,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing playerDeviceId or command' }, { status: 400 });
     }
 
-    // Hole PlayerDevice
-    const device = await base44.entities.PlayerDevice.get(playerDeviceId);
+    // playerDeviceId ist jetzt PlayerUser.id, finde PlayerDevice mit userId
+    const devices = await base44.asServiceRole.entities.PlayerDevice.filter({ userId: playerDeviceId });
+    const device = devices[0];
+    
     if (!device) {
       return Response.json({ error: 'PlayerDevice nicht gefunden' }, { status: 404 });
     }

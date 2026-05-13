@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { motion } from 'framer-motion';
 import {
   Radio, RefreshCw, AlertCircle, Play, Pause, SkipForward, SkipBack,
-  Volume2, ListMusic, Wifi, WifiOff
+  Volume2, ListMusic, Wifi, WifiOff, Music2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -17,12 +17,19 @@ function formatMs(ms) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-function PlayerDeviceCard({ device, account, playlists }) {
-  const [loading, setLoading] = useState(false);
+function PlayerDeviceCard({ playerUser, playerDevice, account, playlists }) {
   const [actionLoading, setActionLoading] = useState(false);
   const queryClient = useQueryClient();
   const tickerRef = useRef(null);
-  const [localProgress, setLocalProgress] = useState(device.progressMs || 0);
+  const [localProgress, setLocalProgress] = useState(playerDevice?.progressMs || 0);
+
+  // Merge device data (PlayerDevice hat Precedence für Status)
+  const device = {
+    id: playerUser.id,
+    name: playerUser.deviceName,
+    spotifyAccountId: playerUser.spotifyAccountId,
+    ...playerDevice, // PlayerDevice Status überschreibt
+  };
 
   const accountPlaylists = playlists.filter(p => p.spotifyAccountId === account?.id);
 
@@ -64,9 +71,8 @@ function PlayerDeviceCard({ device, account, playlists }) {
 
       if (res.data?.success) {
         toast.success(`${command} ausgeführt`);
-        // Refresh device data
         setTimeout(() => {
-          queryClient.invalidateQueries({ queryKey: ['playerDevices'] });
+          queryClient.invalidateQueries({ queryKey: ['playerDevices', 'playerUsers'] });
         }, 500);
       } else {
         toast.error(res.data?.error || 'Fehler');
@@ -93,7 +99,10 @@ function PlayerDeviceCard({ device, account, playlists }) {
     await sendCommand('setVolume', { volume: num });
   };
 
-  const isOnline = device.lastSeen && (Date.now() - new Date(device.lastSeen).getTime()) < 10 * 1000; // 10 Sekunden (5s Heartbeat + Buffer)
+  // Online = lastSeen < 10s alt
+  const isOnline = playerDevice?.lastSeen && 
+    (Date.now() - new Date(playerDevice.lastSeen).getTime()) < 10000;
+
   const dur = device.currentTrackDuration || 1;
   const pct = Math.min(100, Math.round((localProgress / dur) * 100));
 
@@ -102,7 +111,10 @@ function PlayerDeviceCard({ device, account, playlists }) {
       {/* Header */}
       <div className="p-4 border-b border-border/30 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: device.isActive ? '#22c55e' : '#64748b' }} />
+          <div 
+            className="w-3 h-3 rounded-full flex-shrink-0" 
+            style={{ background: isOnline ? '#22c55e' : '#fbbf24' }} 
+          />
           <div>
             <p className="font-bold text-sm">{device.name}</p>
             <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -120,7 +132,7 @@ function PlayerDeviceCard({ device, account, playlists }) {
         </div>
         <button
           onClick={() => {
-            queryClient.invalidateQueries({ queryKey: ['playerDevices'] });
+            queryClient.invalidateQueries({ queryKey: ['playerDevices', 'playerUsers'] });
             toast.success('Aktualisiert');
           }}
           className="text-muted-foreground hover:text-foreground transition-colors"
@@ -131,7 +143,7 @@ function PlayerDeviceCard({ device, account, playlists }) {
 
       <div className="p-5 space-y-4">
         {/* Not playing */}
-        {!device.currentTrackName && (
+        {!device.currentTrackName ? (
           <div className="py-4 space-y-4 text-center">
             <p className="text-muted-foreground text-sm">Keine aktive Wiedergabe</p>
             {accountPlaylists.length > 0 && (
@@ -157,24 +169,26 @@ function PlayerDeviceCard({ device, account, playlists }) {
                 max={100}
                 value={device.volume || 50}
                 onChange={e => handleVolume(e.target.value)}
-                className="flex-1 h-2 rounded-full appearance-none cursor-pointer"
+                className="flex-1 h-2 rounded-full"
                 style={{ background: `linear-gradient(to right, hsl(var(--primary)) ${device.volume}%, hsl(var(--border)) ${device.volume}%)`, WebkitAppearance: 'none' }}
               />
               <span className="text-xs text-muted-foreground w-8 text-right">{device.volume}%</span>
             </div>
           </div>
-        )}
-
-        {/* Now playing */}
-        {device.currentTrackName && (
+        ) : (
           <>
+            {/* Now playing */}
             <div className="flex items-center gap-4">
-              {device.currentTrackCoverUrl && (
-                <img src={device.currentTrackCoverUrl} alt="cover" className="w-16 h-16 rounded-xl shadow-lg flex-shrink-0" />
+              {device.currentTrackCoverUrl ? (
+                <img src={device.currentTrackCoverUrl} alt="cover" className="w-16 h-16 rounded-xl shadow-lg flex-shrink-0 object-cover" />
+              ) : (
+                <div className="w-16 h-16 rounded-xl bg-muted/20 flex items-center justify-center flex-shrink-0">
+                  <Music2 className="w-8 h-8 text-muted-foreground/30" />
+                </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="font-bold truncate">{device.currentTrackName}</p>
-                <p className="text-sm text-muted-foreground truncate">{device.currentTrackArtist}</p>
+                <p className="font-bold truncate text-sm">{device.currentTrackName}</p>
+                <p className="text-xs text-muted-foreground truncate">{device.currentTrackArtist}</p>
                 <p className="text-xs text-muted-foreground truncate">{device.currentTrackAlbum}</p>
               </div>
               <div className={`w-2 h-2 rounded-full flex-shrink-0 ${device.isPlaying ? 'bg-green-400 animate-pulse' : 'bg-muted-foreground'}`} />
@@ -235,7 +249,7 @@ function PlayerDeviceCard({ device, account, playlists }) {
                 max={100}
                 value={device.volume || 50}
                 onChange={e => handleVolume(e.target.value)}
-                className="flex-1 h-2 rounded-full appearance-none cursor-pointer"
+                className="flex-1 h-2 rounded-full"
                 style={{ background: `linear-gradient(to right, hsl(var(--primary)) ${device.volume}%, hsl(var(--border)) ${device.volume}%)`, WebkitAppearance: 'none' }}
               />
               <span className="text-xs text-muted-foreground w-8 text-right">{device.volume}%</span>
@@ -248,11 +262,18 @@ function PlayerDeviceCard({ device, account, playlists }) {
 }
 
 export default function NowPlaying() {
-  // Lade PlayerUser statt PlayerDevice
+  const [debug, setDebug] = useState(false);
+
   const { data: playerUsers = [] } = useQuery({
     queryKey: ['playerUsers'],
     queryFn: () => base44.entities.PlayerUser.list('-lastLoginAt'),
-    refetchInterval: 15000,
+    refetchInterval: 3000, // Sehr aggressives Refresh
+  });
+
+  const { data: playerDevices = [] } = useQuery({
+    queryKey: ['playerDevices'],
+    queryFn: () => base44.entities.PlayerDevice.list(),
+    refetchInterval: 3000, // Sehr aggressives Refresh
   });
 
   const { data: accounts = [] } = useQuery({
@@ -265,34 +286,49 @@ export default function NowPlaying() {
     queryFn: () => base44.entities.Playlist.list(),
   });
 
-  // Lade PlayerDevices für Status-Updates
-  const { data: playerDevices = [] } = useQuery({
-    queryKey: ['playerDevices'],
-    queryFn: () => base44.entities.PlayerDevice.list(),
-    refetchInterval: 15000,
-  });
+  // Debug-Log
+  useEffect(() => {
+    if (debug) {
+      console.log('🔍 NOWPLAYING DEBUG:', {
+        playerUsersCount: playerUsers.length,
+        playerDevicesCount: playerDevices.length,
+        playerUsers: playerUsers.map(pu => ({ id: pu.id, name: pu.deviceName, spotifyId: pu.spotifyAccountId })),
+        playerDevices: playerDevices.map(pd => ({ id: pd.id, userId: pd.userId, lastSeen: pd.lastSeen, isPlaying: pd.isPlaying })),
+      });
+    }
+  }, [playerUsers, playerDevices, debug]);
 
-  // Mape PlayerUser zu PlayerDevice für Status-Anzeige
-  const devices = playerUsers.map(pu => {
-    const device = playerDevices.find(pd => pd.userId === pu.id);
-    return {
-      ...device, // Status von PlayerDevice
-      ...pu,     // Fallback auf PlayerUser wenn Device nicht vorhanden
-      id: pu.id, // Nutze PlayerUser.id als Primary Key
-    };
-  });
+  // Vereinfachte Merging-Logik
+  const devices = playerUsers.map(pu => ({
+    playerUser: pu,
+    playerDevice: playerDevices.find(pd => pd.userId === pu.id) || {},
+  }));
 
   return (
     <div className="p-4 lg:p-8 space-y-6 max-w-7xl mx-auto">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl lg:text-3xl font-black flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
-            <Radio className="w-5 h-5 text-rose-400" />
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl lg:text-3xl font-black flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
+                <Radio className="w-5 h-5 text-rose-400" />
+              </div>
+              Now Playing
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1 ml-14">Live Player Control ({playerUsers.length} Players, {playerDevices.length} Devices)</p>
           </div>
-          Now Playing
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1 ml-14">Steuere deine Player direkt — Admin-zu-Player Kommunikation</p>
+          <Button variant="outline" size="sm" onClick={() => setDebug(!debug)}>
+            {debug ? '🔍 Debug OFF' : '🔍 Debug ON'}
+          </Button>
+        </div>
       </motion.div>
+
+      {debug && (
+        <div className="bento-panel p-4 bg-muted/20 text-xs space-y-2 font-mono">
+          <p>PlayerUsers: {JSON.stringify(playerUsers.map(p => ({ id: p.id.slice(0, 8), name: p.deviceName, userId: p.id })))}</p>
+          <p>PlayerDevices: {JSON.stringify(playerDevices.map(p => ({ id: p.id.slice(0, 8), userId: p.userId?.slice(0, 8), lastSeen: p.lastSeen?.slice(-8) })))}</p>
+        </div>
+      )}
 
       {devices.length === 0 ? (
         <div className="bento-panel border-dashed border-primary/20 p-16 text-center">
@@ -302,16 +338,26 @@ export default function NowPlaying() {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
-          {devices.map((device, i) => {
-            const account = accounts.find(a => a.id === device.spotifyAccountId);
+          {devices.map(({ playerUser, playerDevice }, i) => {
+            const account = accounts.find(a => a.id === playerUser.spotifyAccountId);
             return (
-              <motion.div key={device.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}>
+              <motion.div 
+                key={playerUser.id} 
+                initial={{ opacity: 0, y: 15 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                transition={{ delay: i * 0.07 }}
+              >
                 {account ? (
-                  <PlayerDeviceCard device={device} account={account} playlists={playlists} />
+                  <PlayerDeviceCard 
+                    playerUser={playerUser} 
+                    playerDevice={playerDevice} 
+                    account={account} 
+                    playlists={playlists} 
+                  />
                 ) : (
                   <div className="bento-panel p-5 text-center">
                     <AlertCircle className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
-                    <p className="text-sm font-bold">{device.name}</p>
+                    <p className="text-sm font-bold">{playerUser.deviceName}</p>
                     <p className="text-xs text-muted-foreground mt-1">Kein Spotify Account verbunden</p>
                   </div>
                 )}

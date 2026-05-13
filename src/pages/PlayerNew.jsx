@@ -240,20 +240,28 @@ export default function PlayerNew() {
     };
   }, [playerUser]);
 
-  // Heartbeat: Update lastSeen alle 5 Sekunden wenn Player aktiv
+  // Heartbeat: Update lastSeen alle 3 Sekunden wenn Player aktiv
   useEffect(() => {
     if (!playerReady || !playerUser) return;
+    
+    console.log('🎵 Heartbeat started for', playerUser.deviceName);
     
     const interval = setInterval(async () => {
       try {
         const state = playerRef.current?.getState?.();
-        if (state) await syncPlayerStatus(state, playerUser);
+        if (state) {
+          await syncPlayerStatus(state, playerUser);
+          console.log('💓 Heartbeat synced:', playerUser.deviceName);
+        }
       } catch (e) {
         console.error('Heartbeat sync failed:', e);
       }
-    }, 5000);
+    }, 3000); // 3 Sekunden Intervall
     
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      console.log('💔 Heartbeat stopped for', playerUser.deviceName);
+    };
   }, [playerReady, playerUser]);
 
   // Controls
