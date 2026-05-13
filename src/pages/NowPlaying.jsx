@@ -71,7 +71,12 @@ function ZonePlayer({ zone, account, playlists }) {
 
       if (!pb) setStatusDetail('Keine aktive Wiedergabe. Öffne Spotify auf dem Gerät.');
     } catch (e) {
-      setError(e.message);
+      const msg = e.message || e.toString();
+      if (msg.includes('429') || msg.includes('Rate limit')) {
+        setError('Spotify API Rate Limit. Bitte in 1-2 Minuten neu laden.');
+      } else {
+        setError(msg);
+      }
       stopTicker();
     } finally {
       if (initial) setLoading(false);
@@ -80,7 +85,7 @@ function ZonePlayer({ zone, account, playlists }) {
 
   useEffect(() => {
     refresh(true);
-    const interval = setInterval(() => refresh(false), 30000);
+    const interval = setInterval(() => refresh(false), 60000); // Reduziert von 30s auf 60s
     return () => { clearInterval(interval); stopTicker(); };
   }, [refresh, stopTicker]);
 
@@ -89,10 +94,20 @@ function ZonePlayer({ zone, account, playlists }) {
     try {
       const activeDeviceId = playback?.device?.id;
       const res = await invoke('spotifyAccountControl', { action, accountId: account.id, deviceId: activeDeviceId, ...extra });
-      if (res.data?.error) toast.error(res.data.error);
-      else setTimeout(() => refresh(false), 800);
+      if (res.data?.error) {
+        if (res.data.error.includes('429') || res.data.error.includes('Rate limit')) {
+          toast.error('Spotify API Rate Limit erreicht. Bitte warten Sie kurz.');
+        } else {
+          toast.error(res.data.error);
+        }
+      }
+      else setTimeout(() => refresh(false), 1200); // Längeres Delay nach Action
     } catch (e) {
-      toast.error(e?.response?.data?.error || e.message);
+      if (e?.message?.includes('429') || e?.message?.includes('Rate limit')) {
+        toast.error('Spotify API Rate Limit erreicht. Bitte warten Sie kurz.');
+      } else {
+        toast.error(e?.response?.data?.error || e.message);
+      }
     } finally {
       setActionLoading(false);
     }
