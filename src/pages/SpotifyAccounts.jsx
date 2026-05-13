@@ -160,6 +160,19 @@ export default function SpotifyAccounts() {
         </Button>
       </div>
 
+      {/* Re-auth Banner */}
+      {accounts.some(a => a.authStatus === 'connected') && (
+        <div className="bento-panel p-4 flex items-start gap-3 border-orange-500/30 bg-orange-500/8">
+          <AlertCircle className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-bold text-orange-300">Browser Player funktioniert nicht? → Account neu verbinden!</p>
+            <p className="text-muted-foreground text-xs mt-0.5">
+              Der Browser-Player benötigt den <code className="text-orange-300">streaming</code> Scope. Klicke bei jedem Account auf <strong>"Erneut verbinden"</strong> und autorisiere Spotify erneut. Das dauert nur 10 Sekunden.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Redirect URI Info */}
       <div className="bento-panel p-4 flex items-start gap-3 border-blue-500/20 bg-blue-500/5">
         <AlertCircle className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
@@ -215,7 +228,7 @@ export default function SpotifyAccounts() {
                             <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleRefreshDevices(acc)}>
                               <RefreshCw className="w-3.5 h-3.5" /> Geräte laden
                             </Button>
-                            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleConnect(acc)}>
+                            <Button size="sm" className="gap-1.5 bg-green-600 hover:bg-green-700 text-white font-semibold" onClick={() => handleConnect(acc)}>
                               <Link2 className="w-3.5 h-3.5" /> Erneut verbinden
                             </Button>
                           </>

@@ -101,9 +101,13 @@ export default function Player() {
       });
 
       player.addListener('ready', ({ device_id }) => {
+        console.log('Spotify Player ready, device_id:', device_id);
         setDeviceId(device_id);
         setPlayerReady(true);
         setStatus('ready');
+        // Auto-transfer to this browser device
+        invoke('spotifyAccountControl', { action: 'transferPlayback', accountId: selectedAccountId, deviceId: device_id })
+          .catch(e => console.warn('Auto-transfer failed:', e));
         toast.success('Player bereit! Wähle eine Playlist zum Abspielen.');
       });
 
@@ -123,7 +127,7 @@ export default function Player() {
       });
 
       player.addListener('authentication_error', ({ message }) => {
-        setError('Auth Fehler: ' + message + ' — Account neu verbinden!');
+        setError('AUTH_SCOPE_ERROR:' + message);
         setStatus('error');
       });
 
@@ -163,11 +167,19 @@ export default function Player() {
     if (!pl.providerPlaylistUri) { toast.error('Keine Spotify URI für diese Playlist.'); return; }
     setLoadingPlaylist(pl.id);
     try {
-      const account = accounts.find(a => a.id === pl.spotifyAccountId);
-      if (!account) { toast.error('Account nicht gefunden.'); return; }
+      // 1. Transfer playback to this browser device first
+      await invoke('spotifyAccountControl', {
+        action: 'transferPlayback',
+        accountId: selectedAccountId,
+        deviceId: deviceId,
+      });
+      // Short wait for transfer to take effect
+      await new Promise(r => setTimeout(r, 600));
+
+      // 2. Play the playlist on this device
       const res = await invoke('spotifyAccountControl', {
         action: 'playPlaylist',
-        accountId: account.id,
+        accountId: selectedAccountId,
         contextUri: pl.providerPlaylistUri,
         deviceId: deviceId,
       });
@@ -261,9 +273,22 @@ export default function Player() {
           </div>
 
           {error && (
-            <div className="bento-panel border-red-500/20 bg-red-500/5 p-3 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-red-300">{error}</p>
+            <div className="bento-panel border-red-500/20 bg-red-500/5 p-3 flex flex-col gap-2">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-red-300">
+                  {error.startsWith('AUTH_SCOPE_ERROR:')
+                    ? 'Token-Berechtigungen fehlen (streaming). Account muss neu verbunden werden.'
+                    : error}
+                </p>
+              </div>
+              {error.startsWith('AUTH_SCOPE_ERROR:') && (
+                <Link to="/spotify-accounts">
+                  <Button size="sm" className="w-full bg-red-500 hover:bg-red-600 text-white text-xs h-8">
+                    → Jetzt Account neu verbinden
+                  </Button>
+                </Link>
+              )}
             </div>
           )}
 
