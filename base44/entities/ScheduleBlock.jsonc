@@ -2,46 +2,49 @@
   "name": "ScheduleBlock",
   "type": "object",
   "properties": {
-    "zoneId": {
-      "type": "string"
-    },
-    "spotifyAccountId": {
-      "type": "string"
-    },
-    "targetDeviceId": {
-      "type": "string"
+    "playerDeviceId": {
+      "type": "string",
+      "description": "Player Device ID (Referenz zu PlayerDevice)"
     },
     "playlistId": {
-      "type": "string"
+      "type": "string",
+      "description": "Playlist ID zum Abspielen"
     },
     "title": {
-      "type": "string"
+      "type": "string",
+      "description": "Name des Zeitplans"
     },
     "dayOfWeek": {
       "type": "number",
-      "description": "0=Sunday ... 6=Saturday"
+      "description": "0=Sonntag ... 6=Samstag"
     },
     "startTime": {
-      "type": "string"
+      "type": "string",
+      "description": "Startzeit (HH:mm)"
     },
     "endTime": {
-      "type": "string"
+      "type": "string",
+      "description": "Endzeit (HH:mm)"
     },
     "baseVolume": {
       "type": "number",
-      "default": 50
+      "default": 50,
+      "description": "Basis-Lautst\u00e4rke (0-100)"
     },
     "rampEnabled": {
       "type": "boolean",
-      "default": false
+      "default": false,
+      "description": "Ob die Lautst\u00e4rke-Rampe aktiviert ist"
     },
     "startVolume": {
       "type": "number",
-      "default": 40
+      "default": 40,
+      "description": "Start-Lautst\u00e4rke der Rampe"
     },
     "endVolume": {
       "type": "number",
-      "default": 60
+      "default": 60,
+      "description": "End-Lautst\u00e4rke der Rampe"
     },
     "rampMode": {
       "type": "string",
@@ -51,19 +54,22 @@
         "every_30_min",
         "every_15_min"
       ],
-      "default": "continuous"
+      "default": "continuous",
+      "description": "Art der Lautst\u00e4rke-Rampe"
     },
     "repeatWeekly": {
       "type": "boolean",
-      "default": true
+      "default": true,
+      "description": "Jede Woche wiederholen"
     },
     "isActive": {
       "type": "boolean",
-      "default": true
+      "default": true,
+      "description": "Zeitplan aktiv"
     }
   },
   "required": [
-    "zoneId",
+    "playerDeviceId",
     "startTime",
     "endTime"
   ]
