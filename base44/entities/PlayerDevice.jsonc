@@ -12,7 +12,7 @@
     },
     "zoneId": {
       "type": "string",
-      "description": "Zugewiesene Zone"
+      "description": "Zugeordnete Zone"
     },
     "pairingToken": {
       "type": "string",
@@ -47,6 +47,53 @@
       "type": "boolean",
       "default": true,
       "description": "Ob das Ger\u00e4t aktiv ist"
+    },
+    "currentTrackName": {
+      "type": "string",
+      "description": "Name des aktuell gespielten Tracks"
+    },
+    "currentTrackArtist": {
+      "type": "string",
+      "description": "K\u00fcnstler des aktuellen Tracks"
+    },
+    "currentTrackAlbum": {
+      "type": "string",
+      "description": "Album des aktuellen Tracks"
+    },
+    "currentTrackCoverUrl": {
+      "type": "string",
+      "description": "Cover-URL des aktuellen Tracks"
+    },
+    "currentTrackUri": {
+      "type": "string",
+      "description": "Spotify URI des aktuellen Tracks"
+    },
+    "currentTrackDuration": {
+      "type": "number",
+      "description": "Dauer des aktuellen Tracks in ms"
+    },
+    "currentPlaylistUri": {
+      "type": "string",
+      "description": "Spotify URI der aktuell spielenden Playlist"
+    },
+    "isPlaying": {
+      "type": "boolean",
+      "default": false,
+      "description": "Aktuell im Playback?"
+    },
+    "volume": {
+      "type": "number",
+      "default": 50,
+      "description": "Aktuelle Lautst\u00e4rke (0-100)"
+    },
+    "progressMs": {
+      "type": "number",
+      "default": 0,
+      "description": "Aktueller Fortschritt in ms"
+    },
+    "lastStatusUpdate": {
+      "type": "string",
+      "description": "Zeitstempel des letzten Status-Updates"
     }
   },
   "required": [

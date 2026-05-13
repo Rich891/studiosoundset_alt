@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { motion } from 'framer-motion';
 import {
   Radio, RefreshCw, AlertCircle, Play, Pause, SkipForward, SkipBack,
-  Volume2, ListMusic
+  Volume2, ListMusic, Wifi, WifiOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -17,204 +17,123 @@ function formatMs(ms) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-function ZonePlayer({ zone, account, playlists }) {
-  const [playback, setPlayback] = useState(null);
-  const [devices, setDevices] = useState([]);
-  const [volume, setVolume] = useState(zone.defaultVolume || 50);
-  const [loading, setLoading] = useState(true);
+function PlayerDeviceCard({ device, account, playlists }) {
+  const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [statusDetail, setStatusDetail] = useState('');
-  const [localProgress, setLocalProgress] = useState(0);
+  const queryClient = useQueryClient();
   const tickerRef = useRef(null);
-  const pbRef = useRef(null);
-  const volDebounce = useRef(null);
+  const [localProgress, setLocalProgress] = useState(device.progressMs || 0);
+
+  const accountPlaylists = playlists.filter(p => p.spotifyAccountId === account?.id);
 
   const startTicker = useCallback((startMs) => {
     if (tickerRef.current) clearInterval(tickerRef.current);
     let ms = startMs;
     tickerRef.current = setInterval(() => {
       ms += 1000;
-      const dur = pbRef.current?.item?.duration_ms || 1;
+      const dur = device.currentTrackDuration || 1;
       setLocalProgress(Math.min(ms, dur));
     }, 1000);
+  }, [device.currentTrackDuration]);
+
+  const stopTicker = useCallback(() => {
+    if (tickerRef.current) {
+      clearInterval(tickerRef.current);
+      tickerRef.current = null;
+    }
   }, []);
-  const stopTicker = useCallback(() => { if (tickerRef.current) { clearInterval(tickerRef.current); tickerRef.current = null; } }, []);
-
-  const refresh = useCallback(async (initial = false) => {
-    if (!account || account.authStatus !== 'connected') {
-      setError(account ? 'Account nicht verbunden.' : 'Kein Spotify Account zugewiesen.');
-      setStatusDetail(account ? 'Gehe zu Spotify Accounts und verbinde diesen Account.' : 'Weise dieser Zone einen Spotify Account zu.');
-      if (initial) setLoading(false);
-      return;
-    }
-
-    if (initial) setLoading(true);
-    setError(null);
-    try {
-      const [pbRes, devRes] = await Promise.all([
-        invoke('spotifyAccountControl', { action: 'getPlaybackState', accountId: account.id }),
-        invoke('spotifyAccountControl', { action: 'getDevices', accountId: account.id }),
-      ]);
-
-      const pb = pbRes.data?.playback;
-      const devList = devRes.data?.devices || [];
-      setPlayback(pb || null);
-      pbRef.current = pb || null;
-      setDevices(devList);
-
-      if (pb?.device?.volume_percent !== undefined) setVolume(pb.device.volume_percent);
-      const prog = pb?.progress_ms || 0;
-      setLocalProgress(prog);
-      if (pb?.is_playing) startTicker(prog);
-      else stopTicker();
-
-      if (!pb) setStatusDetail('Keine aktive Wiedergabe. Öffne Spotify auf dem Gerät.');
-    } catch (e) {
-      const msg = e.message || e.toString();
-      if (msg.includes('429') || msg.includes('Rate limit')) {
-        setError('Spotify API Rate Limit. Bitte in 1-2 Minuten neu laden.');
-      } else {
-        setError(msg);
-      }
-      stopTicker();
-    } finally {
-      if (initial) setLoading(false);
-    }
-  }, [account, startTicker, stopTicker]);
 
   useEffect(() => {
-    refresh(true);
-    const interval = setInterval(() => refresh(false), 60000); // Reduziert von 30s auf 60s
-    return () => { clearInterval(interval); stopTicker(); };
-  }, [refresh, stopTicker]);
+    setLocalProgress(device.progressMs || 0);
+    if (device.isPlaying) {
+      startTicker(device.progressMs || 0);
+    } else {
+      stopTicker();
+    }
+    return () => stopTicker();
+  }, [device.progressMs, device.isPlaying, startTicker, stopTicker]);
 
-  const handleAction = async (action, extra = {}) => {
+  const sendCommand = async (command, payload = {}) => {
     setActionLoading(true);
     try {
-      const activeDeviceId = playback?.device?.id;
-      const res = await invoke('spotifyAccountControl', { action, accountId: account.id, deviceId: activeDeviceId, ...extra });
-      if (res.data?.error) {
-        if (res.data.error.includes('429') || res.data.error.includes('Rate limit')) {
-          toast.error('Spotify API Rate Limit erreicht. Bitte warten Sie kurz.');
-        } else {
-          toast.error(res.data.error);
-        }
-      }
-      else setTimeout(() => refresh(false), 1200); // Längeres Delay nach Action
-    } catch (e) {
-      if (e?.message?.includes('429') || e?.message?.includes('Rate limit')) {
-        toast.error('Spotify API Rate Limit erreicht. Bitte warten Sie kurz.');
+      const res = await invoke('playerDeviceCommand', {
+        playerDeviceId: device.id,
+        command,
+        payload,
+      });
+
+      if (res.data?.success) {
+        toast.success(`${command} ausgeführt`);
+        // Refresh device data
+        setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ['playerDevices'] });
+        }, 500);
       } else {
-        toast.error(e?.response?.data?.error || e.message);
+        toast.error(res.data?.error || 'Fehler');
       }
+    } catch (e) {
+      toast.error(e.message);
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleVolume = (val) => {
-    const num = Number(val);
-    setVolume(num);
-    if (volDebounce.current) clearTimeout(volDebounce.current);
-    volDebounce.current = setTimeout(async () => {
-      try {
-        const activeDeviceId = playback?.device?.id;
-        // Wenn kein aktives Gerät → erst Transfer zum ersten sichtbaren Gerät
-        if (!activeDeviceId && devices.length > 0) {
-          await invoke('spotifyAccountControl', { action: 'transferPlayback', accountId: account.id, deviceId: devices[0].id });
-          await new Promise(r => setTimeout(r, 800));
-        }
-        const targetId = activeDeviceId || devices[0]?.id;
-        const res = await invoke('spotifyAccountControl', { action: 'setVolume', accountId: account.id, volume: num, deviceId: targetId });
-        if (res.data?.error) {
-          if (res.data.error.includes('FORBIDDEN') || res.data.error.includes('Premium')) {
-            toast.error('Lautstärke kann auf diesem Gerät (iPhone/Android) nicht per API gesteuert werden. Bitte direkt am Gerät einstellen.');
-          } else {
-            toast.error(res.data.error);
-          }
-        }
-      } catch (e) { toast.error(e.message); }
-    }, 400);
-  };
-
-  const accountPlaylists = playlists.filter(p => p.spotifyAccountId === account?.id);
-
   const handlePlayPlaylist = async (playlistId) => {
     const pl = accountPlaylists.find(p => p.id === playlistId);
-    if (!pl?.providerPlaylistUri) { toast.error('Keine Spotify URI für diese Playlist.'); return; }
-    setActionLoading(true);
-    try {
-      const res = await invoke('spotifyAccountControl', {
-        action: 'playPlaylist',
-        accountId: account.id,
-        contextUri: pl.providerPlaylistUri,
-        deviceId: playback?.device?.id,
-      });
-      if (res.data?.success) { toast.success(`"${pl.name}" wird abgespielt.`); setTimeout(() => refresh(false), 1000); }
-      else toast.error(res.data?.error || 'Fehler.');
-    } catch (e) { toast.error(e.message); }
-    finally { setActionLoading(false); }
+    if (!pl?.providerPlaylistUri) {
+      toast.error('Keine Spotify URI für diese Playlist.');
+      return;
+    }
+    await sendCommand('playPlaylist', { contextUri: pl.providerPlaylistUri });
   };
 
-  const track = playback?.item;
-  const isPlaying = playback?.is_playing;
-  const dur = track?.duration_ms || 1;
-  const pct = Math.min(100, Math.round((localProgress / dur) * 100));
+  const handleVolume = async (val) => {
+    const num = Number(val);
+    setLocalProgress(num);
+    await sendCommand('setVolume', { volume: num });
+  };
 
-  const activeDevice = devices.find(d => d.is_active);
-  const deviceName = playback?.device?.name || activeDevice?.name;
+  const isOnline = device.lastSeen && (Date.now() - new Date(device.lastSeen).getTime()) < 5 * 60 * 1000;
+  const dur = device.currentTrackDuration || 1;
+  const pct = Math.min(100, Math.round((localProgress / dur) * 100));
 
   return (
     <div className="bento-panel overflow-hidden">
       {/* Header */}
       <div className="p-4 border-b border-border/30 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: zone.color || '#6366f1' }} />
+          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: device.isActive ? '#22c55e' : '#64748b' }} />
           <div>
-            <p className="font-bold text-sm">{zone.name}</p>
-            {account && <p className="text-xs text-muted-foreground">{account.displayName} {account.authStatus !== 'connected' && '⚠ nicht verbunden'}</p>}
+            <p className="font-bold text-sm">{device.name}</p>
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              {isOnline ? (
+                <>
+                  <Wifi className="w-3 h-3 text-green-400" /> Online
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-3 h-3 text-yellow-400" /> Offline
+                </>
+              )}
+            </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {deviceName && <span className="text-xs text-muted-foreground px-2 py-1 bg-muted/30 rounded-full">{deviceName}</span>}
-          <button onClick={() => refresh(false)} className="text-muted-foreground hover:text-foreground transition-colors">
-            <RefreshCw className="w-4 h-4" />
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            queryClient.invalidateQueries({ queryKey: ['playerDevices'] });
+            toast.success('Aktualisiert');
+          }}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <RefreshCw className="w-4 h-4" />
+        </button>
       </div>
 
       <div className="p-5 space-y-4">
-        {/* Error state */}
-        {error && (
-          <div className="flex items-start gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
-            <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm text-red-400 font-semibold">{error}</p>
-              {statusDetail && <p className="text-xs text-muted-foreground mt-0.5">{statusDetail}</p>}
-            </div>
-          </div>
-        )}
-
-        {/* Loading */}
-        {loading && !error && (
-          <div className="flex items-center justify-center gap-2 h-24">
-            <RefreshCw className="w-5 h-5 text-primary animate-spin" />
-            <span className="text-sm text-muted-foreground">Lade Wiedergabe...</span>
-          </div>
-        )}
-
-        {/* No playback */}
-        {!loading && !error && !track && (
-          <div className="py-4 space-y-4">
-            <div className="text-center">
-              <p className="text-muted-foreground text-sm">Keine aktive Wiedergabe.</p>
-              {statusDetail && <p className="text-xs text-muted-foreground mt-1">{statusDetail}</p>}
-              {devices.length > 0 && (
-                <p className="text-xs text-muted-foreground mt-2">{devices.length} Gerät(e) für diesen Account gefunden.</p>
-              )}
-            </div>
-            {/* Playlist starten auch ohne aktive Wiedergabe */}
+        {/* Not playing */}
+        {!device.currentTrackName && (
+          <div className="py-4 space-y-4 text-center">
+            <p className="text-muted-foreground text-sm">Keine aktive Wiedergabe</p>
             {accountPlaylists.length > 0 && (
               <div className="flex items-center gap-2">
                 <ListMusic className="w-4 h-4 text-muted-foreground flex-shrink-0" />
@@ -230,30 +149,35 @@ function ZonePlayer({ zone, account, playlists }) {
                 </Select>
               </div>
             )}
-            {/* Lautstärke auch ohne aktive Wiedergabe */}
             <div className="flex items-center gap-3">
               <Volume2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-              <input type="range" min={0} max={100} value={volume} onChange={e => handleVolume(e.target.value)}
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={device.volume || 50}
+                onChange={e => handleVolume(e.target.value)}
                 className="flex-1 h-2 rounded-full appearance-none cursor-pointer"
-                style={{ background: `linear-gradient(to right, hsl(var(--primary)) ${volume}%, hsl(var(--border)) ${volume}%)`, WebkitAppearance: 'none' }} />
-              <span className="text-xs text-muted-foreground w-8 text-right">{volume}%</span>
+                style={{ background: `linear-gradient(to right, hsl(var(--primary)) ${device.volume}%, hsl(var(--border)) ${device.volume}%)`, WebkitAppearance: 'none' }}
+              />
+              <span className="text-xs text-muted-foreground w-8 text-right">{device.volume}%</span>
             </div>
           </div>
         )}
 
         {/* Now playing */}
-        {!loading && !error && track && (
+        {device.currentTrackName && (
           <>
             <div className="flex items-center gap-4">
-              {track.album?.images?.[0]?.url && (
-                <img src={track.album.images[0].url} alt="cover" className="w-16 h-16 rounded-xl shadow-lg flex-shrink-0" />
+              {device.currentTrackCoverUrl && (
+                <img src={device.currentTrackCoverUrl} alt="cover" className="w-16 h-16 rounded-xl shadow-lg flex-shrink-0" />
               )}
               <div className="flex-1 min-w-0">
-                <p className="font-bold truncate">{track.name}</p>
-                <p className="text-sm text-muted-foreground truncate">{track.artists?.map(a => a.name).join(', ')}</p>
-                <p className="text-xs text-muted-foreground truncate">{track.album?.name}</p>
+                <p className="font-bold truncate">{device.currentTrackName}</p>
+                <p className="text-sm text-muted-foreground truncate">{device.currentTrackArtist}</p>
+                <p className="text-xs text-muted-foreground truncate">{device.currentTrackAlbum}</p>
               </div>
-              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isPlaying ? 'bg-green-400 animate-pulse' : 'bg-muted-foreground'}`} />
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${device.isPlaying ? 'bg-green-400 animate-pulse' : 'bg-muted-foreground'}`} />
             </div>
 
             {/* Progress */}
@@ -262,18 +186,27 @@ function ZonePlayer({ zone, account, playlists }) {
                 <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${pct}%` }} />
               </div>
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{formatMs(localProgress)}</span><span>{formatMs(dur)}</span>
+                <span>{formatMs(localProgress)}</span>
+                <span>{formatMs(dur)}</span>
               </div>
             </div>
 
             {/* Controls */}
             <div className="flex items-center justify-center gap-3">
-              <Button variant="ghost" size="icon" onClick={() => handleAction('previous')} disabled={actionLoading}><SkipBack className="w-5 h-5" /></Button>
-              <Button size="icon" className={`w-11 h-11 rounded-full ${isPlaying ? 'bg-muted hover:bg-muted/80' : 'bg-primary hover:bg-primary/90'}`}
-                onClick={() => handleAction(isPlaying ? 'pause' : 'resume')} disabled={actionLoading}>
-                {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+              <Button variant="ghost" size="icon" onClick={() => sendCommand('previous')} disabled={actionLoading}>
+                <SkipBack className="w-5 h-5" />
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => handleAction('next')} disabled={actionLoading}><SkipForward className="w-5 h-5" /></Button>
+              <Button
+                size="icon"
+                className={`w-11 h-11 rounded-full ${device.isPlaying ? 'bg-muted hover:bg-muted/80' : 'bg-primary hover:bg-primary/90'}`}
+                onClick={() => sendCommand(device.isPlaying ? 'pause' : 'resume')}
+                disabled={actionLoading}
+              >
+                {device.isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => sendCommand('next')} disabled={actionLoading}>
+                <SkipForward className="w-5 h-5" />
+              </Button>
             </div>
 
             {/* Playlist select */}
@@ -296,42 +229,40 @@ function ZonePlayer({ zone, account, playlists }) {
             {/* Volume */}
             <div className="flex items-center gap-3">
               <Volume2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-              <input type="range" min={0} max={100} value={volume} onChange={e => handleVolume(e.target.value)}
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={device.volume || 50}
+                onChange={e => handleVolume(e.target.value)}
                 className="flex-1 h-2 rounded-full appearance-none cursor-pointer"
-                style={{ background: `linear-gradient(to right, hsl(var(--primary)) ${volume}%, hsl(var(--border)) ${volume}%)`, WebkitAppearance: 'none' }} />
-              <span className="text-xs text-muted-foreground w-8 text-right">{volume}%</span>
+                style={{ background: `linear-gradient(to right, hsl(var(--primary)) ${device.volume}%, hsl(var(--border)) ${device.volume}%)`, WebkitAppearance: 'none' }}
+              />
+              <span className="text-xs text-muted-foreground w-8 text-right">{device.volume}%</span>
             </div>
           </>
         )}
       </div>
-
-      {/* Device list */}
-      {devices.length > 0 && (
-        <div className="px-5 pb-4 border-t border-border/20 pt-3 space-y-1.5">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Geräte</p>
-          {devices.map(d => (
-            <div key={d.id} className={`flex items-center gap-2 text-xs py-1.5 px-2 rounded-lg ${d.is_active ? 'bg-green-500/10 text-green-300' : 'text-muted-foreground'}`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${d.is_active ? 'bg-green-400' : 'bg-muted-foreground'}`} />
-              <span className="flex-1 truncate">{d.name}</span>
-              <span className="text-muted-foreground">{d.type}</span>
-              {d.volume_percent !== undefined && <span>{d.volume_percent}%</span>}
-              {!d.is_active && (
-                <button className="text-primary hover:text-primary/80 font-semibold" onClick={() => handleAction('transferPlayback', { deviceId: d.id })}>
-                  Aktivieren
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
 export default function NowPlaying() {
-  const { data: zones = [] } = useQuery({ queryKey: ['zones'], queryFn: () => base44.entities.Zone.filter({ isActive: true }) });
-  const { data: accounts = [] } = useQuery({ queryKey: ['spotifyAccounts'], queryFn: () => base44.entities.SpotifyAccount.list() });
-  const { data: playlists = [] } = useQuery({ queryKey: ['playlists'], queryFn: () => base44.entities.Playlist.list() });
+  const { data: devices = [] } = useQuery({
+    queryKey: ['playerDevices'],
+    queryFn: () => base44.entities.PlayerDevice.filter({ isPaired: true, isActive: true }),
+    refetchInterval: 15000, // Auto-refresh alle 15 Sekunden
+  });
+
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['spotifyAccounts'],
+    queryFn: () => base44.entities.SpotifyAccount.list(),
+  });
+
+  const { data: playlists = [] } = useQuery({
+    queryKey: ['playlists'],
+    queryFn: () => base44.entities.Playlist.list(),
+  });
 
   return (
     <div className="p-4 lg:p-8 space-y-6 max-w-7xl mx-auto">
@@ -342,22 +273,30 @@ export default function NowPlaying() {
           </div>
           Now Playing
         </h1>
-        <p className="text-sm text-muted-foreground mt-1 ml-14">Echtzeit-Steuerung pro Zone — jede Zone hat ihren eigenen Spotify Account.</p>
+        <p className="text-sm text-muted-foreground mt-1 ml-14">Steuere deine Player direkt — Admin-zu-Player Kommunikation</p>
       </motion.div>
 
-      {zones.length === 0 ? (
+      {devices.length === 0 ? (
         <div className="bento-panel border-dashed border-primary/20 p-16 text-center">
           <Radio className="w-16 h-16 text-muted-foreground/20 mx-auto mb-4" />
-          <h3 className="text-xl font-bold mb-2">Keine Zonen angelegt</h3>
-          <p className="text-muted-foreground text-sm">Erstelle zuerst Zonen und verbinde Spotify Accounts.</p>
+          <h3 className="text-xl font-bold mb-2">Keine Player vorhanden</h3>
+          <p className="text-muted-foreground text-sm">Erstelle zuerst einen Player in der Geräteverwaltung.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
-          {zones.map((zone, i) => {
-            const account = accounts.find(a => a.id === zone.spotifyAccountId);
+          {devices.map((device, i) => {
+            const account = accounts.find(a => a.id === device.spotifyAccountId);
             return (
-              <motion.div key={zone.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}>
-                <ZonePlayer zone={zone} account={account} playlists={playlists} />
+              <motion.div key={device.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}>
+                {account ? (
+                  <PlayerDeviceCard device={device} account={account} playlists={playlists} />
+                ) : (
+                  <div className="bento-panel p-5 text-center">
+                    <AlertCircle className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
+                    <p className="text-sm font-bold">{device.name}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Kein Spotify Account verbunden</p>
+                  </div>
+                )}
               </motion.div>
             );
           })}
