@@ -16,11 +16,12 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'deviceName, spotifyAccountId und password erforderlich' }, { status: 400 });
     }
 
-    // Generiere Geräte-ID
-    const deviceId = `player-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // Generiere kurze Geräte-ID
+    const shortId = Math.random().toString(36).substr(2, 6).toUpperCase();
+    const deviceId = `player-${shortId}`;
     
-    // Generiere Email
-    const email = `${deviceId}@studio`;
+    // Generiere kurze Email
+    const email = `p${shortId}@studio`;
 
     // Erstelle PlayerUser
     const result = await base44.asServiceRole.entities.PlayerUser.create({
