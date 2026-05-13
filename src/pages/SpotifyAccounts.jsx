@@ -100,7 +100,21 @@ export default function SpotifyAccounts() {
   const handleConnect = async (provider) => {
     const redirectUri = window.location.origin + '/spotify-callback';
     try {
-      const res = await invoke('spotifyAuth', { action: 'getAuthUrl', providerId: provider.id, redirectUri });
+      const res = await base44.functions.invoke('spotifyAuth', { 
+        action: 'getAuthUrl', 
+        providerId: provider.id, 
+        redirectUri,
+        scopes: [
+          'user-read-private',
+          'user-read-email',
+          'user-read-playback-state',
+          'user-modify-playback-state',
+          'user-read-currently-playing',
+          'playlist-read-private',
+          'playlist-read-collaborative',
+          'streaming'
+        ].join(' ')
+      });
       if (res.data?.url) {
         window.location.href = res.data.url;
       } else {

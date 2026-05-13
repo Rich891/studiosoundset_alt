@@ -67,23 +67,31 @@ Deno.serve(async (req) => {
     const data = await res.json();
     if (!res.ok) return Response.json({ error: data.error_description || 'Token exchange failed' }, { status: 400 });
 
+    // Get user info from Spotify
+    let spotifyUserEmail, spotifyUserId;
+    try {
+      const meRes = await fetch('https://api.spotify.com/v1/me', {
+        headers: { 'Authorization': `Bearer ${data.access_token}` }
+      });
+      const me = await meRes.json();
+      spotifyUserEmail = me.email;
+      spotifyUserId = me.id;
+    } catch (e) {
+      console.error('Failed to fetch user info:', e.message);
+    }
+
     // Persist tokens in Provider entity
     if (providerId) {
       const expiresAt = new Date(Date.now() + data.expires_in * 1000).toISOString();
       await base44.asServiceRole.entities.Provider.update(providerId, {
-        accessTokenStored: true,
-        refreshTokenStored: !!data.refresh_token,
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token || undefined,
         tokenExpiresAt: expiresAt,
-        connectionStatus: 'connected',
-        lastConnectionTestAt: new Date().toISOString(),
+        status: 'connected',
+        spotifyUserEmail,
+        spotifyUserId,
+        lastTestAt: new Date().toISOString(),
       });
-      // Store tokens in AppSetting (keyed by providerId)
-      const tokenKey = `spotify_access_token_${providerId}`;
-      const refreshKey = `spotify_refresh_token_${providerId}`;
-      await upsertSetting(base44, tokenKey, data.access_token, 'spotify_tokens');
-      if (data.refresh_token) {
-        await upsertSetting(base44, refreshKey, data.refresh_token, 'spotify_tokens');
-      }
     }
 
     return Response.json({ success: true, expiresIn: data.expires_in });

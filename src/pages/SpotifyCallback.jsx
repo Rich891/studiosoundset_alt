@@ -60,23 +60,23 @@ export default function SpotifyCallback() {
     setMessage('Verbinde mit Spotify...');
 
     try {
-      // Try to get account name
+      // Try to get provider name
       try {
-        const accounts = await base44.entities.SpotifyAccount.list();
-        const acc = accounts.find(a => a.id === state);
-        if (acc) setAccountName(acc.displayName);
+        const providers = await base44.entities.Provider.list();
+        const provider = providers.find(p => p.id === state);
+        if (provider) setAccountName(provider.name);
       } catch {}
 
-      const res = await base44.functions.invoke('spotifyAccountControl', {
+      const res = await base44.functions.invoke('spotifyAuth', {
         action: 'exchange',
         code,
         redirectUri: REDIRECT_URI,
-        accountId: state,
+        providerId: state,
       });
 
       if (res.data?.success) {
         setStatus('success');
-        setMessage('Spotify Account erfolgreich verbunden!');
+        setMessage('Spotify Provider erfolgreich verbunden!');
         setTimeout(() => navigate('/spotify-accounts'), 2500);
       } else {
         setStatus('error');
