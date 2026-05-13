@@ -202,6 +202,14 @@ function ZonePlayer({ zone, account, playlists }) {
                 </Select>
               </div>
             )}
+            {/* Lautstärke auch ohne aktive Wiedergabe */}
+            <div className="flex items-center gap-3">
+              <Volume2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <input type="range" min={0} max={100} value={volume} onChange={e => handleVolume(e.target.value)}
+                className="flex-1 h-2 rounded-full appearance-none cursor-pointer"
+                style={{ background: `linear-gradient(to right, hsl(var(--primary)) ${volume}%, hsl(var(--border)) ${volume}%)`, WebkitAppearance: 'none' }} />
+              <span className="text-xs text-muted-foreground w-8 text-right">{volume}%</span>
+            </div>
           </div>
         )}
 
