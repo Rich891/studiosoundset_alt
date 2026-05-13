@@ -61,7 +61,7 @@ export default function ManagePlayerDevices() {
 
   const { data: spotifyAccounts = [] } = useQuery({
     queryKey: ['spotifyAccounts'],
-    queryFn: () => base44.entities.SpotifyAccount.list(),
+    queryFn: () => base44.entities.Provider.list('-created_date'),
   });
 
   const { data: zones = [] } = useQuery({
@@ -207,8 +207,8 @@ export default function ManagePlayerDevices() {
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="bg-muted/20 rounded-lg p-3">
                       <p className="text-xs text-muted-foreground font-semibold mb-1">Spotify Account</p>
-                      <p className="font-bold text-sm">{account?.displayName || '—'}</p>
-                      {account && <p className={`text-xs mt-1 ${account.authStatus === 'connected' ? 'text-green-400' : 'text-yellow-400'}`}>{account.authStatus}</p>}
+                       <p className="font-bold text-sm">{account?.name || '—'}</p>
+                       {account && <p className={`text-xs mt-1 ${account.status === 'connected' ? 'text-green-400' : 'text-yellow-400'}`}>{account.status}</p>}
                     </div>
                     <div className="bg-muted/20 rounded-lg p-3">
                       <p className="text-xs text-muted-foreground font-semibold mb-1">Zone</p>
@@ -338,12 +338,16 @@ export default function ManagePlayerDevices() {
                   <SelectValue placeholder="Account wählen" />
                 </SelectTrigger>
                 <SelectContent>
-                  {spotifyAccounts.map((acc) => (
-                    <SelectItem key={acc.id} value={acc.id}>
-                      {acc.displayName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
+                   {spotifyAccounts.length === 0 ? (
+                     <SelectItem disabled value="">Keine Provider konfiguriert</SelectItem>
+                   ) : (
+                     spotifyAccounts.map((acc) => (
+                       <SelectItem key={acc.id} value={acc.id}>
+                         {acc.name} {acc.status === 'connected' ? '✓' : ''}
+                       </SelectItem>
+                     ))
+                   )}
+                 </SelectContent>
               </Select>
             </div>
 
