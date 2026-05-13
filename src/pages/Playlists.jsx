@@ -146,6 +146,7 @@ export default function Playlists() {
   const [filterAccountId, setFilterAccountId] = useState('all');
   const [importingForAccount, setImportingForAccount] = useState(null);
   const [detailPlaylist, setDetailPlaylist] = useState(null);
+  const [resyncingId, setResyncingId] = useState(null);
   const queryClient = useQueryClient();
 
   const { data: playlists = [], isLoading } = useQuery({
@@ -195,6 +196,7 @@ export default function Playlists() {
   const handleResync = async (playlist) => {
     const account = accounts.find(a => a.id === playlist.spotifyAccountId);
     if (!account) { toast.error('Account nicht gefunden.'); return; }
+    setResyncingId(playlist.id);
     try {
       await base44.entities.Playlist.update(playlist.id, { syncStatus: 'pending' });
       const res = await invoke('spotifyAccountControl', {
@@ -207,10 +209,18 @@ export default function Playlists() {
         toast.success(`${res.data.imported} Songs neu importiert.`);
         queryClient.invalidateQueries({ queryKey: ['playlists'] });
       } else {
-        toast.error(res.data?.error || 'Fehler.');
+        const err = res.data?.error || 'Fehler.';
+        if (err.includes('FORBIDDEN')) {
+          toast.error('Kein Zugriff. Verbinde den Spotify Account neu (Scopes fehlen).');
+        } else {
+          toast.error(err);
+        }
+        queryClient.invalidateQueries({ queryKey: ['playlists'] });
       }
     } catch (e) {
       toast.error(e.message);
+    } finally {
+      setResyncingId(null);
     }
   };
 
@@ -318,8 +328,8 @@ export default function Playlists() {
                         <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs" onClick={() => setDetailPlaylist(pl)}>
                           <Eye className="w-3.5 h-3.5" />
                         </Button>
-                        <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs" onClick={() => handleResync(pl)}>
-                          <RefreshCw className="w-3.5 h-3.5" />
+                        <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs" onClick={() => handleResync(pl)} disabled={resyncingId === pl.id}>
+                          <RefreshCw className={`w-3.5 h-3.5 ${resyncingId === pl.id ? 'animate-spin' : ''}`} />
                         </Button>
                         <Button size="sm" variant="ghost" className="h-8 text-destructive/60 hover:text-destructive text-xs" onClick={() => deleteMutation.mutate(pl.id)}>
                           <X className="w-3.5 h-3.5" />
