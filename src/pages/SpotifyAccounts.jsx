@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import AccountDeviceList from '@/components/spotify/AccountDeviceList';
+import { buildSpotifyAuthorizeUrl, getSpotifyRedirectUri } from '@/lib/spotifyPkceAuth';
 
 const STATUS_CFG = {
   connected: { icon: CheckCircle2, color: 'text-green-400', bg: 'bg-green-500/10 border-green-500/20', label: 'Verbunden' },
@@ -18,7 +19,6 @@ const STATUS_CFG = {
 };
 
 const EMPTY_FORM = { displayName: '', clientId: '', clientSecret: '' };
-const getRedirectUri = () => `${window.location.origin}/spotify-callback`;
 const providerStatus = (provider) => provider?.status || provider?.authStatus || 'disconnected';
 
 function sanitizeProviderForm(form, editProvider) {
@@ -27,7 +27,6 @@ function sanitizeProviderForm(form, editProvider) {
   const clientSecret = form.clientSecret.trim();
   if (!name) throw new Error('Provider Name fehlt.');
   if (!clientId) throw new Error('Spotify Client ID fehlt.');
-  if (!editProvider && !clientSecret) throw new Error('Spotify Client Secret fehlt.');
 
   const data = {
     name,
@@ -36,6 +35,7 @@ function sanitizeProviderForm(form, editProvider) {
     status: editProvider?.status || editProvider?.authStatus || 'disconnected',
     authStatus: editProvider?.authStatus || editProvider?.status || 'disconnected',
     providerType: 'spotify',
+    oauthFlow: 'pkce',
     updatedAt: new Date().toISOString(),
   };
   if (clientSecret) data.clientSecret = clientSecret;
@@ -49,7 +49,7 @@ function ActionMessage({ message }) {
   return (
     <div className={`bento-panel p-4 text-sm border ${tone}`}>
       <p className="font-bold">{message.title}</p>
-      {message.body && <p className="mt-1 text-current/80 break-words">{message.body}</p>}
+      {message.body && <p className="mt-1 text-current/80 break-words whitespace-pre-wrap">{message.body}</p>}
       {message.details && <pre className="mt-2 text-xs text-current/70 whitespace-pre-wrap break-words bg-background/40 rounded-lg p-2">{message.details}</pre>}
     </div>
   );
@@ -63,7 +63,7 @@ export default function SpotifyAccounts() {
   const [actionMessage, setActionMessage] = useState(null);
   const [connectingId, setConnectingId] = useState(null);
   const queryClient = useQueryClient();
-  const redirectUri = getRedirectUri();
+  const redirectUri = getSpotifyRedirectUri();
   const isHttps = redirectUri.startsWith('https://') || redirectUri.startsWith('http://127.0.0.1') || redirectUri.startsWith('http://localhost');
 
   const { data: providers = [], isLoading, error: loadError } = useQuery({ queryKey: ['providers'], queryFn: () => base44.entities.Provider.list('-created_date') });
@@ -109,10 +109,10 @@ export default function SpotifyAccounts() {
 
   const handleConnect = async (provider) => {
     setConnectingId(provider.id);
-    setActionMessage({ type: 'info', title: 'Spotify Connect startet...', body: `Provider: ${provider.name || provider.displayName}\nRedirect URI: ${redirectUri}` });
+    setActionMessage({ type: 'info', title: 'Spotify Connect startet...', body: `Provider: ${provider.name || provider.displayName}\nRedirect URI: ${redirectUri}\nOAuth Flow: PKCE direkt im Browser` });
 
-    if (!provider.clientId || !provider.clientSecret) {
-      const msg = { type: 'error', title: 'Spotify Credentials fehlen', body: 'Client ID oder Client Secret ist in diesem Provider nicht verfügbar. Öffne den Provider mit dem Stift, trage Client Secret erneut ein und speichere.' };
+    if (!provider.clientId) {
+      const msg = { type: 'error', title: 'Spotify Client ID fehlt', body: 'Öffne den Provider mit dem Stift, trage die Client ID ein und speichere.' };
       setActionMessage(msg);
       toast.error(msg.title);
       setConnectingId(null);
@@ -121,37 +121,20 @@ export default function SpotifyAccounts() {
     }
 
     try {
-      await base44.entities.Provider.update(provider.id, { lastError: '', redirectUri, updatedAt: new Date().toISOString() });
-      const res = await base44.functions.invoke('spotifyAuth', {
-        action: 'getAuthUrl',
-        providerId: provider.id,
-        clientId: provider.clientId,
-        clientSecret: provider.clientSecret,
-        redirectUri,
-        scopes: ['user-read-private', 'user-read-email', 'user-read-playback-state', 'user-modify-playback-state', 'user-read-currently-playing', 'playlist-read-private', 'playlist-read-collaborative', 'streaming'].join(' ')
-      });
-
-      if (res.data?.url) {
-        setActionMessage({ type: 'success', title: 'Spotify Auth URL erstellt', body: 'Du wirst jetzt zu Spotify weitergeleitet.', details: res.data.url });
-        window.location.assign(res.data.url);
-        return;
-      }
-
-      const message = res.data?.error || 'Auth URL konnte nicht geladen werden. Die Function spotifyAuth hat keine URL zurückgegeben.';
-      await base44.entities.Provider.update(provider.id, { status: 'error', authStatus: 'error', lastError: message });
-      setActionMessage({ type: 'error', title: 'Spotify Auth URL fehlgeschlagen', body: message, details: JSON.stringify(res.data || {}, null, 2) });
-      toast.error(message);
+      await base44.entities.Provider.update(provider.id, { lastError: '', redirectUri, oauthFlow: 'pkce', updatedAt: new Date().toISOString() });
+      const url = await buildSpotifyAuthorizeUrl({ provider, redirectUri });
+      setActionMessage({ type: 'success', title: 'Spotify Auth URL erstellt', body: 'Du wirst jetzt zu Spotify weitergeleitet.', details: url });
+      window.location.assign(url);
     } catch (e) {
       await base44.entities.Provider.update(provider.id, { status: 'error', authStatus: 'error', lastError: e.message }).catch(() => {});
       setActionMessage({ type: 'error', title: 'Spotify Connect Fehler', body: e.message, details: e.stack || '' });
       toast.error('Spotify Connect Fehler: ' + e.message);
-    } finally {
       setConnectingId(null);
     }
   };
 
   const copyRedirect = () => { navigator.clipboard.writeText(redirectUri); setActionMessage({ type: 'success', title: 'Redirect URI kopiert', body: redirectUri }); toast.success('Redirect URI kopiert.'); };
-  const isFormValid = form.displayName.trim() && form.clientId.trim() && (editAccount || form.clientSecret.trim());
+  const isFormValid = form.displayName.trim() && form.clientId.trim();
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
   if (isLoading) return <div className="p-8 flex items-center justify-center gap-3"><RefreshCw className="w-5 h-5 text-primary animate-spin" /><span className="text-muted-foreground">Lade Provider...</span></div>;
@@ -170,7 +153,7 @@ export default function SpotifyAccounts() {
         <AlertCircle className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
         <div className="text-sm space-y-2 flex-1">
           <p className="font-semibold text-blue-300">Exakte Redirect URI für Spotify</p>
-          <p className="text-muted-foreground">Diese URI muss exakt im Spotify Developer Dashboard stehen. Keine LAN-IP, kein localhost für iPhone/iPad.</p>
+          <p className="text-muted-foreground">Diese URI muss exakt im Spotify Developer Dashboard stehen. Keine LAN-IP, kein localhost für iPhone/iPad. Für diese Base44-Version wird PKCE verwendet, daher reicht die Client ID.</p>
           <div className="flex gap-2 items-center"><code className="block bg-muted/40 rounded-lg px-3 py-2 text-xs text-blue-200 font-mono flex-1 break-all">{redirectUri}</code><Button type="button" variant="outline" size="sm" onClick={copyRedirect} className="gap-2"><Copy className="w-3.5 h-3.5" /> Kopieren</Button></div>
           {!isHttps && <p className="text-xs text-red-300">Spotify OAuth benötigt HTTPS, außer bei localhost/127.0.0.1 Development.</p>}
         </div>
@@ -184,7 +167,7 @@ export default function SpotifyAccounts() {
             <div className={`bento-panel border ${cfg.bg} overflow-hidden`}>
               <div className="p-5 flex items-center gap-4 flex-wrap">
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${cfg.bg}`}><Icon className={`w-5 h-5 ${cfg.color}`} /></div>
-                <div className="flex-1 min-w-0"><p className="font-bold text-lg">{provider.name || provider.displayName}</p><div className="flex items-center gap-3 flex-wrap mt-0.5"><span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>{provider.spotifyUserEmail && <span className="text-xs text-muted-foreground">{provider.spotifyUserEmail}</span>}{provider.clientId && <span className="text-xs text-muted-foreground font-mono">ID: {provider.clientId.substring(0, 8)}...</span>}</div>{provider.lastError && <p className="text-xs text-red-400 mt-1 break-words">⚠ {provider.lastError}</p>}</div>
+                <div className="flex-1 min-w-0"><p className="font-bold text-lg">{provider.name || provider.displayName}</p><div className="flex items-center gap-3 flex-wrap mt-0.5"><span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>{provider.spotifyUserEmail && <span className="text-xs text-muted-foreground">{provider.spotifyUserEmail}</span>}{provider.clientId && <span className="text-xs text-muted-foreground font-mono">ID: {provider.clientId.substring(0, 8)}...</span>}{provider.oauthFlow && <span className="text-xs text-muted-foreground">OAuth: {provider.oauthFlow}</span>}</div>{provider.lastError && <p className="text-xs text-red-400 mt-1 break-words">⚠ {provider.lastError}</p>}</div>
                 <div className="flex items-center gap-2 flex-wrap"><Button type="button" size="sm" className="gap-1.5 bg-green-600 hover:bg-green-700 text-white font-semibold" onClick={() => handleConnect(provider)} disabled={connectingId === provider.id}>{connectingId === provider.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />} {status === 'connected' ? 'Erneut verbinden' : 'Mit Spotify verbinden'}</Button><Button type="button" variant="ghost" size="sm" className="gap-1" onClick={() => openEdit(provider)}><Pencil className="w-4 h-4" /></Button><Button type="button" variant="ghost" size="sm" className="text-destructive/70 hover:text-destructive" onClick={() => deleteMutation.mutate(provider.id)} disabled={deleteMutation.isPending}><Trash2 className="w-4 h-4" /></Button></div>
               </div>
               <AccountDeviceList account={provider} expanded={isExpanded} onToggle={() => setExpandedId(isExpanded ? null : provider.id)} />
@@ -199,9 +182,9 @@ export default function SpotifyAccounts() {
           <div className="space-y-4 pt-2">
             <div><Label className="text-sm font-semibold mb-2 block">Provider Name *</Label><Input value={form.displayName} onChange={e => setForm(f => ({ ...f, displayName: e.target.value }))} placeholder="z. B. Studio Spotify" className="h-11 bg-muted/30" /></div>
             <div className="border border-border/50 rounded-lg p-4 space-y-3 bg-muted/10">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Spotify Developer App Credentials</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Spotify Developer App</p>
               <div><Label className="text-sm font-semibold mb-2 block">Client ID *</Label><Input value={form.clientId} onChange={e => setForm(f => ({ ...f, clientId: e.target.value }))} placeholder="Client ID" className="h-11 bg-muted/30 font-mono text-xs" /></div>
-              <div><Label className="text-sm font-semibold mb-2 block">Client Secret {editAccount ? '(bei Connect-Problemen erneut eintragen)' : '*'}</Label><Input type="password" value={form.clientSecret} onChange={e => setForm(f => ({ ...f, clientSecret: e.target.value }))} placeholder={editAccount ? 'erneut eintragen, falls Connect nichts macht' : 'Dein Spotify Client Secret'} className="h-11 bg-muted/30 font-mono text-xs" /></div>
+              <div><Label className="text-sm font-semibold mb-2 block">Client Secret optional</Label><Input type="password" value={form.clientSecret} onChange={e => setForm(f => ({ ...f, clientSecret: e.target.value }))} placeholder="Optional, PKCE benötigt kein Secret" className="h-11 bg-muted/30 font-mono text-xs" /></div>
               <p className="text-xs text-muted-foreground">Zu finden auf <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-primary underline">developer.spotify.com/dashboard</a></p>
             </div>
             <div className="flex gap-3"><Button type="button" variant="outline" className="flex-1" onClick={closeDialog}>Abbrechen</Button><Button type="button" className="flex-1 bg-primary hover:bg-primary/90 font-bold" disabled={!isFormValid || isSaving} onClick={handleSave}>{isSaving ? 'Speichern...' : editAccount ? 'Speichern' : 'Erstellen'}</Button></div>
