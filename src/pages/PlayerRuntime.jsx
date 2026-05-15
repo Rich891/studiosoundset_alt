@@ -1,121 +1,50 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import {
-  AlertCircle, CheckCircle2, LogOut, Music2, Pause, Play,
-  RefreshCw, SkipBack, SkipForward, Volume2, Wifi, WifiOff
+  AlertCircle, CheckCircle2, ChevronDown, List, LogOut, Music2, Pause, Play,
+  RefreshCw, ShieldCheck, SkipBack, SkipForward, Volume2, VolumeX, Wifi, WifiOff
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatMs, nowIso } from '@/lib/studioSoundSetRuntime';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
-  SPOTIFY_SCOPES,
-  randomString,
-  createCodeChallenge,
-  getTokenExpiryIso,
-  tokenLooksUsable,
-} from '@/lib/spotifyPkceAuth';
+  COMMAND,
+  COMMAND_STATUS,
+  formatMs,
+  nowIso,
+  bootstrapPublicPlayer,
+  listPublicPlayerPlaylists,
+  pollPublicPlayerCommands,
+  publicPlayerRuntime,
+  sendPublicPlayerCommandResult,
+  syncPlayerStatusFromSdk,
+  spotifyCommandError,
+} from '@/lib/studioSoundSetRuntime';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const TOKEN_URL = 'https://accounts.spotify.com/api/token';
-const PKCE_VERIFIER_KEY = 'sss_player_pkce_verifier';
-
-// ---------- localStorage token helpers ----------
-
-function getAuthKey(playerId) {
-  return `sss_player_spotify_auth_${playerId}`;
-}
-
-function readLocalAuth(playerId) {
-  try { return JSON.parse(localStorage.getItem(getAuthKey(playerId))) || null; }
-  catch { return null; }
-}
-
-function saveLocalAuth(playerId, data) {
-  localStorage.setItem(getAuthKey(playerId), JSON.stringify(data));
-}
-
-function clearLocalAuth(playerId) {
-  localStorage.removeItem(getAuthKey(playerId));
-}
-
-// ---------- PKCE helpers ----------
-
-async function startSpotifyPkce(clientId, playerId) {
-  const verifier = randomString(96);
-  const challenge = await createCodeChallenge(verifier);
-  sessionStorage.setItem(PKCE_VERIFIER_KEY, JSON.stringify({ verifier, playerId }));
-
-  const redirectUri = `${window.location.origin}/player-new`;
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: clientId,
-    scope: SPOTIFY_SCOPES,
-    redirect_uri: redirectUri,
-    state: `player_${playerId}`,
-    code_challenge_method: 'S256',
-    code_challenge: challenge,
-    show_dialog: 'true',
-  });
-  window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
-}
-
-async function exchangeCode({ code, clientId, redirectUri }) {
-  const raw = sessionStorage.getItem(PKCE_VERIFIER_KEY);
-  if (!raw) throw new Error('PKCE Verifier fehlt. Starte Spotify Connect erneut.');
-  const { verifier } = JSON.parse(raw);
-
-  const res = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: redirectUri,
-      client_id: clientId,
-      code_verifier: verifier,
-    }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error_description || data.error || `Token Exchange Error ${res.status}`);
-  sessionStorage.removeItem(PKCE_VERIFIER_KEY);
-  return data;
-}
-
-async function refreshToken({ refreshToken: rt, clientId }) {
-  const res = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: rt,
-      client_id: clientId,
-    }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error_description || data.error || `Token Refresh Error ${res.status}`);
-  return data;
-}
-
-// ---------- Main component ----------
 
 function readStoredPlayer() {
   try { return JSON.parse(localStorage.getItem('player')) || null; }
   catch { return null; }
 }
 
-function getTrackFromState(s) {
-  return s?.track_window?.current_track || null;
+function getStoredSessionToken(player) {
+  return player?.sessionToken || player?.setupToken || localStorage.getItem('playerSessionToken') || '';
 }
 
-export default function PlayerRuntime({ exchangeCode: pendingCode, exchangeRedirectUri }) {
-  const player = readStoredPlayer();
-  const playerId = player?.id;
-  const clientId = player?.spotifyClientId || player?.clientId || '';
+function getTrackFromState(state) {
+  return state?.track_window?.current_track || null;
+}
 
-  const [auth, setAuth] = useState(() => readLocalAuth(playerId));
-  const [exchanging, setExchanging] = useState(!!pendingCode);
-  const [exchangeError, setExchangeError] = useState('');
+export default function PlayerRuntime() {
+  const [player, setPlayer] = useState(() => readStoredPlayer());
+  const [provider, setProvider] = useState(null);
+  const [zone, setZone] = useState(null);
+  const [playlists, setPlaylists] = useState([]);
+  const [showPlaylists, setShowPlaylists] = useState(false);
+  const [loadingPlaylist, setLoadingPlaylist] = useState(null);
 
+  const [bootstrapping, setBootstrapping] = useState(true);
+  const [runtimeReady, setRuntimeReady] = useState(false);
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
   const [sdkReady, setSdkReady] = useState(false);
@@ -124,38 +53,67 @@ export default function PlayerRuntime({ exchangeCode: pendingCode, exchangeRedir
   const [state, setState] = useState(null);
   const [volume, setVolume] = useState(50);
   const [heartbeatOk, setHeartbeatOk] = useState(false);
+  const [lastCommand, setLastCommand] = useState(null);
+  const [lastCommandResult, setLastCommandResult] = useState(null);
 
   const spotifyPlayerRef = useRef(null);
   const sdkLoadedRef = useRef(false);
+  const processingRef = useRef(false);
+  const deviceIdRef = useRef('');
 
-  // --- Exchange OAuth code on mount if coming back from Spotify ---
-  useEffect(() => {
-    if (!pendingCode || !clientId) { setExchanging(false); return; }
-    (async () => {
-      try {
-        const data = await exchangeCode({
-          code: pendingCode,
-          clientId,
-          redirectUri: exchangeRedirectUri || `${window.location.origin}/player-new`,
-        });
-        const newAuth = {
-          accessToken: data.access_token,
-          refreshToken: data.refresh_token,
-          expiresAt: getTokenExpiryIso(data.expires_in),
-        };
-        saveLocalAuth(playerId, newAuth);
-        setAuth(newAuth);
-        // Clean URL
-        window.history.replaceState({}, '', '/player-new');
-      } catch (e) {
-        setExchangeError(e.message);
-      } finally {
-        setExchanging(false);
-      }
-    })();
-  }, []);
+  const loadPlaylists = useCallback(async (currentPlayer = player) => {
+    if (!currentPlayer?.id || !getStoredSessionToken(currentPlayer)) return;
+    try {
+      const result = await listPublicPlayerPlaylists(currentPlayer);
+      setPlaylists(result.playlists || []);
+    } catch (e) {
+      console.warn('Playlist load failed:', e);
+    }
+  }, [player]);
 
-  // --- Load Spotify Web Playback SDK script ---
+  const bootstrapRuntime = useCallback(async () => {
+    const stored = readStoredPlayer();
+    setPlayer(stored);
+    if (!stored?.id) {
+      setBootstrapping(false);
+      setRuntimeReady(false);
+      setError('Kein Player geladen. Öffne den Player-Link aus dem Admin erneut.');
+      return;
+    }
+    if (!getStoredSessionToken(stored)) {
+      setBootstrapping(false);
+      setRuntimeReady(false);
+      setError('Runtime Session fehlt. Öffne den aktuellen Player-Link oder QR-Code aus dem Admin.');
+      return;
+    }
+
+    setBootstrapping(true);
+    setError('');
+    try {
+      const result = await bootstrapPublicPlayer(stored);
+      const merged = {
+        ...stored,
+        ...(result.player || {}),
+        sessionToken: getStoredSessionToken(stored),
+        setupToken: stored.setupToken || getStoredSessionToken(stored),
+      };
+      localStorage.setItem('player', JSON.stringify(merged));
+      setPlayer(merged);
+      setProvider(result.provider || null);
+      setZone(result.zone || null);
+      setVolume(Number.isFinite(Number(result.player?.volume)) ? Number(result.player.volume) : 50);
+      setRuntimeReady(true);
+      await loadPlaylists(merged);
+    } catch (e) {
+      setRuntimeReady(false);
+      setError(e.message || 'publicPlayerRuntime bootstrap failed.');
+    } finally {
+      setBootstrapping(false);
+    }
+  }, [loadPlaylists]);
+
+  useEffect(() => { bootstrapRuntime(); }, []);
+
   useEffect(() => {
     if (window.Spotify) { sdkLoadedRef.current = true; return; }
     const script = document.createElement('script');
@@ -169,80 +127,60 @@ export default function PlayerRuntime({ exchangeCode: pendingCode, exchangeRedir
     };
   }, []);
 
-  // --- Get a fresh access token (refresh if needed) ---
+  const reportRuntimeStatus = useCallback(async (payload) => {
+    if (!player?.id) return;
+    await publicPlayerRuntime('heartbeat', {
+      playerId: player.id,
+      sessionToken: getStoredSessionToken(player),
+      payload,
+    });
+  }, [player]);
+
   const getAccessToken = useCallback(async () => {
-    let current = readLocalAuth(playerId);
-    if (!current?.accessToken) throw new Error('Kein Spotify Token. Bitte Spotify verbinden.');
+    const result = await publicPlayerRuntime('getAccessToken', {
+      playerId: player?.id,
+      sessionToken: getStoredSessionToken(player),
+    });
+    if (!result.accessToken) throw spotifyCommandError('SPOTIFY_NOT_CONNECTED', 'Kein Spotify Token verfügbar. Verbinde den Provider im Admin erneut.');
+    return result.accessToken;
+  }, [player]);
 
-    const expiresAt = current.expiresAt ? new Date(current.expiresAt).getTime() : 0;
-    const needsRefresh = expiresAt > 0 && Date.now() > expiresAt - 60000;
-
-    if (needsRefresh && current.refreshToken && clientId) {
-      try {
-        const data = await refreshToken({ refreshToken: current.refreshToken, clientId });
-        current = {
-          accessToken: data.access_token,
-          refreshToken: data.refresh_token || current.refreshToken,
-          expiresAt: getTokenExpiryIso(data.expires_in),
-        };
-        saveLocalAuth(playerId, current);
-        setAuth(current);
-      } catch (e) {
-        clearLocalAuth(playerId);
-        setAuth(null);
-        throw new Error('Spotify Token abgelaufen. Bitte Spotify neu verbinden.');
-      }
-    }
-    return current.accessToken;
-  }, [playerId, clientId]);
-
-  // --- Persist heartbeat to Player entity ---
-  const persistState = useCallback(async (patch = {}) => {
-    if (!playerId) return;
-    const track = getTrackFromState(state);
-    const data = {
-      isOnline: true,
-      lastSeen: nowIso(),
+  const syncStatus = useCallback(async (extra = {}) => {
+    if (!player?.id) return null;
+    const result = await syncPlayerStatusFromSdk({
+      sdkPlayer: spotifyPlayerRef.current,
+      player,
+      spotifyDeviceId: deviceIdRef.current || deviceId,
       sdkReady,
       sdkConnected,
-      spotifyDeviceId: deviceId,
-      isPlaying: state ? !state.paused : false,
-      progressMs: state?.position || 0,
-      currentTrackDuration: track?.duration_ms || 0,
-      currentTrackName: track?.name || '',
-      currentTrackArtist: track?.artists?.map((a) => a.name).join(', ') || '',
-      currentTrackAlbum: track?.album?.name || '',
-      currentTrackCoverUrl: track?.album?.images?.[0]?.url || '',
-      volume,
-      ...patch,
-    };
-    try {
-      await base44.entities.Player.update(playerId, data);
-      setHeartbeatOk(true);
-    } catch {
-      setHeartbeatOk(false);
-    }
-  }, [playerId, sdkReady, sdkConnected, deviceId, state, volume]);
+      extra,
+    });
+    if (result?.state) setState(result.state);
+    setHeartbeatOk(true);
+    return result;
+  }, [player, deviceId, sdkReady, sdkConnected]);
 
-  // --- Refresh playback state ---
   const refreshState = useCallback(async () => {
-    if (!spotifyPlayerRef.current) return;
-    const s = await spotifyPlayerRef.current.getCurrentState();
-    setState(s);
-    await persistState({ lastManualRefreshAt: nowIso() });
-  }, [persistState]);
+    const result = await syncStatus({ lastManualRefreshAt: nowIso() });
+    if (!result?.state) throw spotifyCommandError('STATE_NOT_AVAILABLE', 'Spotify hat noch keinen aktiven Playback State. Starte eine Playlist auf diesem Player.');
+    return result.state;
+  }, [syncStatus]);
 
-  // --- Initialize Spotify Web Playback SDK ---
   const initPlayer = useCallback(async () => {
-    if (!playerId || !auth?.accessToken) return;
+    if (!player?.id || !runtimeReady || !provider?.id) return;
     setError('');
     setStatus('loading');
+
+    if (spotifyPlayerRef.current) {
+      spotifyPlayerRef.current.disconnect();
+      spotifyPlayerRef.current = null;
+    }
+
     try {
+      const firstToken = await getAccessToken();
       let waited = 0;
       while (!window.Spotify && waited < 8000) { await sleep(200); waited += 200; }
-      if (!window.Spotify) throw new Error('Spotify Web Playback SDK konnte nicht geladen werden.');
-
-      const firstToken = await getAccessToken();
+      if (!window.Spotify) throw spotifyCommandError('SDK_NOT_READY', 'Spotify Web Playback SDK konnte nicht geladen werden.');
 
       const spotifyPlayer = new window.Spotify.Player({
         name: `StudioSoundSet - ${player.name || 'Player'}`,
@@ -254,92 +192,217 @@ export default function PlayerRuntime({ exchangeCode: pendingCode, exchangeRedir
       });
 
       spotifyPlayer.addListener('ready', async ({ device_id }) => {
+        deviceIdRef.current = device_id;
         setDeviceId(device_id);
         setSdkReady(true);
         setSdkConnected(true);
         setStatus('ready');
         toast.success('Player bereit.');
-        await sleep(600);
-        const s = await spotifyPlayer.getCurrentState();
-        setState(s);
+        await reportRuntimeStatus({ sdkReady: true, sdkConnected: true, spotifyDeviceId: device_id, lastError: '', volume });
+        await sleep(700);
+        await syncPlayerStatusFromSdk({ sdkPlayer: spotifyPlayer, player, spotifyDeviceId: device_id, sdkReady: true, sdkConnected: true, extra: { volume } });
       });
 
-      spotifyPlayer.addListener('not_ready', () => {
+      spotifyPlayer.addListener('not_ready', async () => {
         setSdkReady(false);
         setSdkConnected(false);
         setStatus('offline');
         setError('Player temporär getrennt. Seite offen lassen oder neu laden.');
+        await reportRuntimeStatus({ sdkReady: false, sdkConnected: false, lastError: 'Player temporarily disconnected' });
       });
-      spotifyPlayer.addListener('player_state_changed', (s) => setState(s));
-      spotifyPlayer.addListener('initialization_error', ({ message }) => { setError(`Init Fehler: ${message}`); setStatus('error'); });
-      spotifyPlayer.addListener('authentication_error', ({ message }) => {
-        setError(`Auth Fehler: ${message}`);
+      spotifyPlayer.addListener('player_state_changed', async (s) => {
+        setState(s);
+        await syncPlayerStatusFromSdk({ sdkPlayer: spotifyPlayer, player, spotifyDeviceId: deviceIdRef.current, sdkReady: true, sdkConnected: true });
+      });
+      spotifyPlayer.addListener('initialization_error', async ({ message }) => {
+        setError(`Init Fehler: ${message}`);
         setStatus('error');
-        clearLocalAuth(playerId);
-        setAuth(null);
+        await reportRuntimeStatus({ sdkReady: false, sdkConnected: false, lastError: `Init Fehler: ${message}` });
       });
-      spotifyPlayer.addListener('account_error', ({ message }) => { setError(`Spotify Premium erforderlich: ${message}`); setStatus('error'); });
-      spotifyPlayer.addListener('playback_error', ({ message }) => setError(`Playback Fehler: ${message}`));
+      spotifyPlayer.addListener('authentication_error', async ({ message }) => {
+        setError(`Auth Fehler: ${message}. Provider im Admin neu verbinden.`);
+        setStatus('error');
+        await reportRuntimeStatus({ sdkReady: false, sdkConnected: false, lastError: `Auth Fehler: ${message}` });
+      });
+      spotifyPlayer.addListener('account_error', async ({ message }) => {
+        setError(`Spotify Premium erforderlich: ${message}`);
+        setStatus('error');
+        await reportRuntimeStatus({ sdkReady: false, sdkConnected: false, lastError: `Spotify Premium erforderlich: ${message}` });
+      });
+      spotifyPlayer.addListener('playback_error', async ({ message }) => {
+        setError(`Playback Fehler: ${message}`);
+        await reportRuntimeStatus({ lastError: `Playback Fehler: ${message}` });
+      });
 
       const connected = await spotifyPlayer.connect();
-      if (!connected) throw new Error('Spotify hat player.connect() abgelehnt.');
+      if (!connected) throw spotifyCommandError('SDK_NOT_READY', 'Spotify hat player.connect() abgelehnt.');
       spotifyPlayerRef.current = spotifyPlayer;
+      setSdkConnected(true);
     } catch (e) {
-      setError(e.message);
+      setError(e.humanMessage || e.message);
       setStatus('error');
-      await persistState({ lastError: e.message, sdkReady: false });
+      await reportRuntimeStatus({ lastError: e.humanMessage || e.message, sdkReady: false, sdkConnected: false }).catch(() => {});
     }
-  }, [playerId, auth?.accessToken, player, volume, getAccessToken, persistState]);
+  }, [player, runtimeReady, provider?.id, volume, getAccessToken, reportRuntimeStatus]);
 
-  // Init when auth becomes available
   useEffect(() => {
-    if (auth?.accessToken && !exchanging) {
-      initPlayer();
-    }
+    if (runtimeReady && provider?.id) initPlayer();
     return () => { if (spotifyPlayerRef.current) spotifyPlayerRef.current.disconnect(); };
-  }, [auth?.accessToken, exchanging]);
+  }, [runtimeReady, provider?.id]);
 
-  // Heartbeat
   useEffect(() => {
-    if (!playerId) return;
-    const id = setInterval(() => persistState(), 3000);
+    if (!player?.id || !runtimeReady) return;
+    const id = setInterval(async () => {
+      try { await syncStatus({ heartbeatSource: 'player-runtime' }); }
+      catch (e) { setHeartbeatOk(false); console.error('Heartbeat failed:', e); }
+    }, 3000);
     return () => clearInterval(id);
-  }, [playerId, persistState]);
+  }, [player?.id, runtimeReady, syncStatus]);
 
-  const run = async (action) => {
+  const executeSdkCommand = useCallback(async (type, payload = {}) => {
+    if (!spotifyPlayerRef.current || !sdkReady) throw spotifyCommandError('SDK_NOT_READY', 'Player ist noch nicht SDK Ready.');
+
+    if (type === COMMAND.GET_STATE) {
+      const current = await refreshState();
+      return { humanMessage: 'State aktualisiert.', stateSummary: current.track_window?.current_track?.name || 'No track' };
+    }
+    if (type === COMMAND.PAUSE) {
+      await spotifyPlayerRef.current.pause();
+      await sleep(700);
+      const current = await refreshState();
+      if (!current.paused) throw spotifyCommandError('PLAYBACK_START_FAILED', 'Pause wurde von Spotify nicht bestätigt.');
+      return { humanMessage: 'Player pausiert.' };
+    }
+    if (type === COMMAND.RESUME) {
+      await spotifyPlayerRef.current.resume();
+      await sleep(900);
+      const current = await refreshState();
+      if (current.paused) throw spotifyCommandError('PLAYBACK_START_FAILED', 'Resume wurde von Spotify nicht bestätigt.');
+      return { humanMessage: 'Player spielt weiter.' };
+    }
+    if (type === COMMAND.SKIP_NEXT) {
+      const before = await spotifyPlayerRef.current.getCurrentState();
+      await spotifyPlayerRef.current.nextTrack();
+      await sleep(1200);
+      const after = await refreshState();
+      if (!after.track_window?.current_track) throw spotifyCommandError('STATE_NOT_AVAILABLE', 'Skip Next wurde nicht durch Playback State bestätigt.');
+      return { humanMessage: 'Nächster Track gestartet.', beforeTrack: before?.track_window?.current_track?.uri, afterTrack: after.track_window.current_track.uri };
+    }
+    if (type === COMMAND.SKIP_PREVIOUS) {
+      await spotifyPlayerRef.current.previousTrack();
+      await sleep(1200);
+      const current = await refreshState();
+      if (!current.track_window?.current_track) throw spotifyCommandError('STATE_NOT_AVAILABLE', 'Skip Previous wurde nicht durch Playback State bestätigt.');
+      return { humanMessage: 'Vorheriger Track gestartet.' };
+    }
+    if (type === COMMAND.SET_VOLUME) {
+      const raw = payload.volume ?? payload.volumePercent ?? 50;
+      const target = Math.max(0, Math.min(100, Number(raw)));
+      await spotifyPlayerRef.current.setVolume(target / 100);
+      await sleep(250);
+      const actual = Math.round((await spotifyPlayerRef.current.getVolume()) * 100);
+      setVolume(actual);
+      await syncStatus({ volume: actual });
+      if (Math.abs(actual - target) > 3) throw spotifyCommandError('VOLUME_NOT_CONFIRMED', `Spotify bestätigte ${actual}% statt ${target}%.`, `target=${target}, actual=${actual}`);
+      return { humanMessage: `Interne Player-Lautstärke auf ${actual}% gesetzt.`, actualVolume: actual };
+    }
+    if (type === COMMAND.PLAY_PLAYLIST) {
+      const currentDeviceId = deviceIdRef.current || deviceId;
+      if (!currentDeviceId) throw spotifyCommandError('NO_SPOTIFY_DEVICE_ID', 'Der Player hat noch keine Spotify Device ID.');
+      const contextUri = payload.contextUri || payload.providerPlaylistUri || payload.playlistUri;
+      if (!contextUri) throw spotifyCommandError('PLAYBACK_START_FAILED', 'Keine Spotify Playlist URI im Command.');
+      await publicPlayerRuntime('playPlaylist', {
+        playerId: player.id,
+        sessionToken: getStoredSessionToken(player),
+        payload: { contextUri, deviceId: currentDeviceId, offset: payload.trackUri ? { uri: payload.trackUri } : undefined },
+      });
+      await sleep(2500);
+      const current = await refreshState();
+      if (!current.track_window?.current_track && current.paused) throw spotifyCommandError('PLAYBACK_START_FAILED', 'Spotify meldet nach Start keinen aktiven Track.');
+      return { humanMessage: 'Playlist gestartet.', currentTrack: current.track_window?.current_track?.name || '' };
+    }
+
+    throw spotifyCommandError('UNKNOWN_COMMAND', `Unbekannter Command: ${type}`);
+  }, [sdkReady, refreshState, syncStatus, deviceId, player]);
+
+  useEffect(() => {
+    if (!player?.id || !runtimeReady) return;
+    const interval = setInterval(async () => {
+      if (processingRef.current) return;
+      processingRef.current = true;
+      try {
+        const runtime = await pollPublicPlayerCommands(player);
+        const command = runtime.command;
+        if (!command) return;
+        const commandType = command.type || command.command;
+        setLastCommand(commandType);
+        try {
+          const result = await executeSdkCommand(commandType, command.payload || {});
+          await sendPublicPlayerCommandResult(player, { commandId: command.id, status: COMMAND_STATUS.SUCCESS, result, humanMessage: result.humanMessage || 'Command confirmed by Player.' });
+          setLastCommandResult({ status: COMMAND_STATUS.SUCCESS, message: result.humanMessage });
+        } catch (e) {
+          await sendPublicPlayerCommandResult(player, {
+            commandId: command.id,
+            status: COMMAND_STATUS.FAILED,
+            errorCode: e.errorCode || 'PLAYER_COMMAND_FAILED',
+            humanMessage: e.humanMessage || e.message,
+            technicalMessage: e.technicalMessage || e.stack || e.message,
+            suggestedFix: e.errorCode === 'STATE_NOT_AVAILABLE' ? 'Starte zuerst eine Playlist auf diesem Player oder tippe Refresh State.' : 'Player öffnen, Provider verbinden und SDK Ready abwarten.',
+          });
+          setLastCommandResult({ status: COMMAND_STATUS.FAILED, message: e.humanMessage || e.message });
+        }
+      } catch (e) {
+        console.warn('Command polling failed:', e);
+      } finally {
+        processingRef.current = false;
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [player, runtimeReady, executeSdkCommand]);
+
+  const runLocalControl = async (type, payload = {}) => {
     try {
-      if (!spotifyPlayerRef.current || !sdkReady) throw new Error('Player ist noch nicht bereit.');
-      if (action === 'pause') await spotifyPlayerRef.current.pause();
-      if (action === 'resume') await spotifyPlayerRef.current.resume();
-      if (action === 'next') await spotifyPlayerRef.current.nextTrack();
-      if (action === 'prev') await spotifyPlayerRef.current.previousTrack();
-      await sleep(800);
-      await refreshState();
-    } catch (e) { setError(e.message); toast.error(e.message); }
+      const result = await executeSdkCommand(type, payload);
+      setLastCommandResult({ status: COMMAND_STATUS.SUCCESS, message: result.humanMessage });
+      toast.success(result.humanMessage || 'OK');
+    } catch (e) {
+      setLastCommandResult({ status: COMMAND_STATUS.FAILED, message: e.humanMessage || e.message });
+      setError(e.humanMessage || e.message);
+      toast.error(e.humanMessage || e.message);
+    }
   };
 
   const setSdkVolume = async (value) => {
-    const next = Number(value);
-    setVolume(next);
-    try {
-      if (spotifyPlayerRef.current && sdkReady) {
-        await spotifyPlayerRef.current.setVolume(next / 100);
-        const actual = Math.round((await spotifyPlayerRef.current.getVolume()) * 100);
-        setVolume(actual);
-        await persistState({ volume: actual });
-      }
-    } catch (e) { toast.error(e.message); }
+    const target = Number(value);
+    setVolume(target);
+    await runLocalControl(COMMAND.SET_VOLUME, { volume: target });
+  };
+
+  const playPlaylist = async (playlist) => {
+    setLoadingPlaylist(playlist.id);
+    await runLocalControl(COMMAND.PLAY_PLAYLIST, { contextUri: playlist.providerPlaylistUri, playlistId: playlist.id });
+    setLoadingPlaylist(null);
+    setShowPlaylists(false);
   };
 
   const logout = () => {
-    if (playerId) clearLocalAuth(playerId);
     localStorage.removeItem('player');
     localStorage.removeItem('playerSessionToken');
     window.location.reload();
   };
 
-  // --- No player stored ---
-  if (!playerId) {
+  if (bootstrapping) {
+    return (
+      <div className="min-h-screen aurora-bg flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <RefreshCw className="w-8 h-8 text-primary animate-spin" />
+          <p className="text-sm">Player Runtime wird geprüft...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!player?.id) {
     return (
       <div className="min-h-screen aurora-bg flex items-center justify-center p-6">
         <div className="bento-panel p-6 max-w-sm text-center">
@@ -351,71 +414,12 @@ export default function PlayerRuntime({ exchangeCode: pendingCode, exchangeRedir
     );
   }
 
-  // --- Exchanging OAuth code ---
-  if (exchanging) {
-    return (
-      <div className="min-h-screen aurora-bg flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3 text-muted-foreground">
-          <RefreshCw className="w-8 h-8 text-primary animate-spin" />
-          <p className="text-sm">Spotify wird verbunden...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // --- Exchange error ---
-  if (exchangeError) {
-    return (
-      <div className="min-h-screen aurora-bg flex items-center justify-center p-6">
-        <div className="bento-panel p-6 max-w-sm text-center space-y-4">
-          <AlertCircle className="w-8 h-8 text-red-400 mx-auto" />
-          <p className="font-bold text-red-300">Spotify Connect Fehler</p>
-          <p className="text-sm text-muted-foreground">{exchangeError}</p>
-          <Button onClick={() => { setExchangeError(''); setAuth(null); }}>Erneut versuchen</Button>
-        </div>
-      </div>
-    );
-  }
-
-  // --- No Spotify token: show connect screen ---
-  if (!auth?.accessToken) {
-    return (
-      <div className="min-h-screen aurora-bg flex flex-col items-center justify-center p-6 gap-6">
-        <div className="w-16 h-16 rounded-2xl bg-green-500/10 border border-green-500/20 flex items-center justify-center">
-          <Music2 className="w-8 h-8 text-green-400" />
-        </div>
-        <div className="text-center space-y-2">
-          <h1 className="text-2xl font-black gradient-text">StudioSoundSet Player</h1>
-          <p className="text-sm text-muted-foreground">{player.name || 'Player'}</p>
-        </div>
-        {!clientId ? (
-          <div className="bento-panel p-5 max-w-sm text-center">
-            <AlertCircle className="w-6 h-6 text-yellow-400 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">Spotify Client ID fehlt. Öffne den Player-Link erneut aus dem Admin-Bereich.</p>
-          </div>
-        ) : (
-          <Button
-            size="lg"
-            className="bg-green-500 hover:bg-green-600 text-black font-bold px-8 py-6 text-lg rounded-2xl gap-3"
-            onClick={() => startSpotifyPkce(clientId, playerId)}
-          >
-            <Music2 className="w-6 h-6" />
-            Spotify auf diesem Player verbinden
-          </Button>
-        )}
-        <Button variant="ghost" size="sm" onClick={logout} className="text-muted-foreground">
-          <LogOut className="w-4 h-4 mr-2" /> Logout
-        </Button>
-      </div>
-    );
-  }
-
-  // --- Player UI ---
   const track = getTrackFromState(state);
   const isPlaying = state ? !state.paused : false;
   const progressMs = state?.position || 0;
   const durationMs = track?.duration_ms || 0;
   const progress = durationMs ? Math.min(100, (progressMs / durationMs) * 100) : 0;
+  const hasSession = !!getStoredSessionToken(player);
 
   return (
     <div className="min-h-screen aurora-bg flex flex-col items-center justify-center p-4">
@@ -426,7 +430,7 @@ export default function PlayerRuntime({ exchangeCode: pendingCode, exchangeRedir
           </div>
           <div>
             <p className="font-black gradient-text">StudioSoundSet Player</p>
-            <p className="text-xs text-muted-foreground">{player.name || 'Player'}</p>
+            <p className="text-xs text-muted-foreground">{player.name || 'Player'}{zone?.name ? ` · ${zone.name}` : ''}</p>
           </div>
         </div>
         <Button variant="ghost" size="sm" onClick={logout} className="gap-2">
@@ -438,20 +442,28 @@ export default function PlayerRuntime({ exchangeCode: pendingCode, exchangeRedir
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="bento-panel p-3 flex items-center gap-2">
             {sdkReady ? <Wifi className="w-4 h-4 text-green-400" /> : <WifiOff className="w-4 h-4 text-yellow-400" />}
-            <span className={sdkReady ? 'text-green-400 font-semibold' : 'text-yellow-300'}>
-              {sdkReady ? 'Player ready' : status === 'loading' ? 'Verbinde...' : 'Nicht bereit'}
-            </span>
+            <span className={sdkReady ? 'text-green-400 font-semibold' : 'text-yellow-300'}>{sdkReady ? 'Player ready' : status === 'loading' ? 'Verbinde...' : 'Nicht bereit'}</span>
           </div>
           <div className="bento-panel p-3 flex items-center gap-2">
             {heartbeatOk ? <CheckCircle2 className="w-4 h-4 text-green-400" /> : <RefreshCw className="w-4 h-4 text-primary animate-spin" />}
             <span className="text-muted-foreground">Heartbeat {heartbeatOk ? 'OK' : 'wartet'}</span>
           </div>
+          <div className="bento-panel p-3 flex items-center gap-2">
+            <ShieldCheck className={hasSession && runtimeReady ? 'w-4 h-4 text-green-400' : 'w-4 h-4 text-yellow-400'} />
+            <span className="text-muted-foreground">Runtime {hasSession && runtimeReady ? 'OK' : 'fehlt'}</span>
+          </div>
+          <div className="bento-panel p-3 flex items-center gap-2">
+            <Music2 className={provider?.id ? 'w-4 h-4 text-green-400' : 'w-4 h-4 text-yellow-400'} />
+            <span className="text-muted-foreground">Provider {provider?.id ? 'OK' : 'fehlt'}</span>
+          </div>
         </div>
 
-        {error && (
-          <div className="bento-panel border-red-500/20 bg-red-500/5 p-3 flex gap-2">
-            <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-red-300">{error}</p>
+        {(!hasSession || !runtimeReady || !provider?.id || error) && (
+          <div className={`bento-panel p-3 flex gap-2 ${error ? 'border-red-500/20 bg-red-500/5' : 'border-yellow-500/20 bg-yellow-500/5'}`}>
+            <AlertCircle className={`w-4 h-4 flex-shrink-0 mt-0.5 ${error ? 'text-red-400' : 'text-yellow-400'}`} />
+            <p className={`text-xs ${error ? 'text-red-300' : 'text-yellow-200'}`}>
+              {error || (!hasSession ? 'Runtime Session fehlt. Öffne den aktuellen Player-Link aus dem Admin.' : !provider?.id ? 'Diesem Player ist kein Provider zugewiesen.' : 'Runtime wird initialisiert.')}
+            </p>
           </div>
         )}
 
@@ -465,9 +477,8 @@ export default function PlayerRuntime({ exchangeCode: pendingCode, exchangeRedir
             </div>
             <div>
               <p className="font-black text-xl truncate">{track?.name || 'Keine Wiedergabe'}</p>
-              <p className="text-sm text-muted-foreground truncate">
-                {track?.artists?.map(a => a.name).join(', ') || 'Wähle eine Playlist im Admin'}
-              </p>
+              <p className="text-sm text-muted-foreground truncate">{track?.artists?.map(a => a.name).join(', ') || 'Wähle eine Playlist'}</p>
+              {track?.album?.name && <p className="text-xs text-muted-foreground truncate mt-1">{track.album.name}</p>}
             </div>
           </div>
 
@@ -482,49 +493,63 @@ export default function PlayerRuntime({ exchangeCode: pendingCode, exchangeRedir
           </div>
 
           <div className="flex items-center justify-center gap-6">
-            <button onClick={() => run('prev')} disabled={!sdkReady} className="text-muted-foreground hover:text-foreground disabled:opacity-30">
-              <SkipBack className="w-7 h-7" />
-            </button>
-            <button
-              onClick={() => run(isPlaying ? 'pause' : 'resume')}
-              disabled={!sdkReady}
-              className={`w-16 h-16 rounded-full flex items-center justify-center disabled:opacity-30 ${isPlaying ? 'bg-white text-black' : 'bg-primary text-white'}`}
-            >
+            <button onClick={() => runLocalControl(COMMAND.SKIP_PREVIOUS)} disabled={!sdkReady} className="text-muted-foreground hover:text-foreground disabled:opacity-30" title="Previous"><SkipBack className="w-7 h-7" /></button>
+            <button onClick={() => runLocalControl(isPlaying ? COMMAND.PAUSE : COMMAND.RESUME)} disabled={!sdkReady} className={`w-16 h-16 rounded-full flex items-center justify-center disabled:opacity-30 ${isPlaying ? 'bg-white text-black' : 'bg-primary text-white'}`} title={isPlaying ? 'Pause' : 'Play'}>
               {isPlaying ? <Pause className="w-7 h-7" /> : <Play className="w-7 h-7 ml-0.5" />}
             </button>
-            <button onClick={() => run('next')} disabled={!sdkReady} className="text-muted-foreground hover:text-foreground disabled:opacity-30">
-              <SkipForward className="w-7 h-7" />
-            </button>
+            <button onClick={() => runLocalControl(COMMAND.SKIP_NEXT)} disabled={!sdkReady} className="text-muted-foreground hover:text-foreground disabled:opacity-30" title="Next"><SkipForward className="w-7 h-7" /></button>
           </div>
 
-          <Button variant="outline" className="w-full gap-2" onClick={refreshState} disabled={!sdkReady}>
+          <Button variant="outline" className="w-full gap-2" onClick={() => runLocalControl(COMMAND.GET_STATE)} disabled={!sdkReady}>
             <RefreshCw className="w-4 h-4" /> Refresh State
           </Button>
 
           <div className="space-y-3 rounded-xl border border-border/40 bg-background/40 p-4">
-            <div className="flex items-center justify-between text-sm font-semibold">
-              <span>Interne Player-Lautstärke</span><span>{volume}%</span>
-            </div>
+            <div className="flex items-center justify-between text-sm font-semibold"><span>Interne Player-Lautstärke</span><span>{volume}%</span></div>
             <div className="flex items-center gap-3">
+              <VolumeX className="w-4 h-4 text-muted-foreground" />
+              <input type="range" min={0} max={100} value={volume} onChange={(e) => setVolume(Number(e.target.value))} onPointerUp={(e) => setSdkVolume(e.currentTarget.value)} className="w-full" />
               <Volume2 className="w-4 h-4 text-muted-foreground" />
-              <input type="range" min={0} max={100} value={volume}
-                onChange={(e) => setVolume(Number(e.target.value))}
-                onMouseUp={(e) => setSdkVolume(e.currentTarget.value)}
-                onTouchEnd={(e) => setSdkVolume(e.currentTarget.value)}
-                className="w-full"
-              />
             </div>
             <div className="grid grid-cols-4 gap-2">
-              {[25, 50, 75, 100].map(v => (
-                <Button key={v} variant="outline" size="sm" onClick={() => setSdkVolume(v)}>{v}%</Button>
-              ))}
+              {[25, 50, 75, 100].map(v => <Button key={v} variant="outline" size="sm" onClick={() => setSdkVolume(v)}>{v}%</Button>)}
             </div>
           </div>
         </div>
 
         <div className="bento-panel p-3 text-center text-xs text-muted-foreground">
-          Bitte stelle die Gerätelautstärke auf 100 %. StudioSoundSet regelt die interne Player-Lautstärke.
+          Bitte stelle die Gerätelautstärke auf 100 %. StudioSoundSet regelt die interne Player-Lautstärke, soweit Spotify Web Playback SDK und Gerät dies zulassen.
         </div>
+
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="bento-panel p-3"><p className="text-muted-foreground">Letzter Command</p><p className="font-semibold break-all">{lastCommand || '—'}</p></div>
+          <div className="bento-panel p-3"><p className="text-muted-foreground">Command Status</p><p className="font-semibold break-all">{lastCommandResult?.status || '—'}</p></div>
+        </div>
+        {lastCommandResult?.message && <div className="bento-panel p-3 text-xs text-muted-foreground">{lastCommandResult.message}</div>}
+
+        <button onClick={() => setShowPlaylists(!showPlaylists)} className="w-full bento-panel p-4 flex items-center gap-3 hover:border-primary/40 transition-all">
+          <List className="w-5 h-5 text-primary" />
+          <span className="font-semibold flex-1 text-left">Playlists ({playlists.length})</span>
+          <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${showPlaylists ? 'rotate-180' : ''}`} />
+        </button>
+
+        <AnimatePresence>
+          {showPlaylists && (
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+              <div className="bento-panel divide-y divide-border/30 max-h-96 overflow-y-auto">
+                {playlists.length === 0 ? (
+                  <div className="p-6 text-center text-sm text-muted-foreground">Keine importierten Playlists für diesen Player.</div>
+                ) : playlists.map(pl => (
+                  <button key={pl.id} onClick={() => playPlaylist(pl)} disabled={loadingPlaylist === pl.id || !sdkReady} className="w-full flex items-center gap-3 p-3 hover:bg-primary/5 transition-colors text-left disabled:opacity-50">
+                    {pl.coverUrl ? <img src={pl.coverUrl} alt={pl.name} className="w-12 h-12 rounded-lg flex-shrink-0 object-cover" /> : <div className="w-12 h-12 bg-muted/30 rounded-lg flex items-center justify-center flex-shrink-0"><Music2 className="w-4 h-4 text-muted-foreground" /></div>}
+                    <div className="flex-1 min-w-0"><p className="font-semibold text-sm truncate">{pl.name}</p><p className="text-xs text-muted-foreground">{pl.importedTracks || 0} Songs</p></div>
+                    {loadingPlaylist === pl.id ? <RefreshCw className="w-4 h-4 animate-spin text-primary flex-shrink-0" /> : <Play className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
