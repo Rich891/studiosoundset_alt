@@ -30,6 +30,8 @@ export async function savePlayerConfig(player, config) {
     spotifyClientId: config.spotifyClientId || '',
     zoneId: config.zoneId || '',
     zoneName: config.zoneName || '',
+    sessionToken: config.sessionToken || player?.sessionToken || '',
+    setupToken: config.setupToken || player?.setupToken || '',
     updatedAt: new Date().toISOString(),
   };
   const store = readStore();
@@ -48,5 +50,7 @@ export function mergePlayerWithConfig(player, config) {
     spotifyClientId: player?.spotifyClientId || config?.spotifyClientId || '',
     zoneId: player?.zoneId || config?.zoneId || '',
     zoneName: config?.zoneName || '',
+    sessionToken: player?.sessionToken || config?.sessionToken || '',
+    setupToken: player?.setupToken || config?.setupToken || '',
   };
 }
