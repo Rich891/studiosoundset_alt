@@ -4,7 +4,21 @@ import { appParams } from '@/lib/app-params';
 import { createAxiosClient } from '@base44/sdk/dist/utils/axios-client';
 
 const AuthContext = createContext();
-const PUBLIC_AUTHLESS_PATHS = new Set(['/', '/spotify-callback', '/player-pairing', '/player-new', '/player-login']);
+const PUBLIC_AUTHLESS_PREFIXES = ['/', '/spotify-callback', '/player-pairing', '/player-new', '/player-login'];
+
+function normalizePath(pathname = '/') {
+  if (!pathname) return '/';
+  if (pathname.length > 1 && pathname.endsWith('/')) return pathname.slice(0, -1);
+  return pathname;
+}
+
+function isPublicAuthlessPath(pathname = '/') {
+  const path = normalizePath(pathname);
+  return PUBLIC_AUTHLESS_PREFIXES.some((publicPath) => {
+    if (publicPath === '/') return path === '/';
+    return path === publicPath || path.startsWith(`${publicPath}/`);
+  });
+}
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -16,7 +30,7 @@ export const AuthProvider = ({ children }) => {
   const [appPublicSettings, setAppPublicSettings] = useState(null);
 
   useEffect(() => {
-    if (PUBLIC_AUTHLESS_PATHS.has(window.location.pathname)) {
+    if (isPublicAuthlessPath(window.location.pathname)) {
       setIsLoadingPublicSettings(false);
       setIsLoadingAuth(false);
       setIsAuthenticated(false);
@@ -28,6 +42,15 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const checkAppState = async () => {
+    if (isPublicAuthlessPath(window.location.pathname)) {
+      setIsLoadingPublicSettings(false);
+      setIsLoadingAuth(false);
+      setIsAuthenticated(false);
+      setAuthChecked(true);
+      setAuthError(null);
+      return;
+    }
+
     try {
       setIsLoadingPublicSettings(true);
       setAuthError(null);
@@ -80,6 +103,14 @@ export const AuthProvider = ({ children }) => {
   };
 
   const checkUserAuth = async () => {
+    if (isPublicAuthlessPath(window.location.pathname)) {
+      setIsLoadingAuth(false);
+      setIsAuthenticated(false);
+      setAuthChecked(true);
+      setAuthError(null);
+      return;
+    }
+
     try {
       setIsLoadingAuth(true);
       const currentUser = await base44.auth.me();
@@ -126,7 +157,8 @@ export const AuthProvider = ({ children }) => {
       logout,
       navigateToLogin,
       checkUserAuth,
-      checkAppState
+      checkAppState,
+      isPublicAuthlessPath
     }}>
       {children}
     </AuthContext.Provider>
