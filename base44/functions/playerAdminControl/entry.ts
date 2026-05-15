@@ -36,7 +36,25 @@ async function readRuntimeSession(base44: any, playerId: string) {
 }
 
 function publicPlayer(player: Record<string, any>, runtimeSession?: Record<string, any> | null) {
-  return { id: player.id, name: player.name || "StudioSoundSet Player", email: player.email || "", providerId: player.providerId || "", apiCredentialSetId: player.apiCredentialSetId || player.providerId || "", spotifyAccountId: player.spotifyAccountId || player.providerId || "", spotifyClientId: player.spotifyClientId || "", zoneId: player.zoneId || "", sessionToken: player.sessionToken || runtimeSession?.sessionToken || "", setupToken: player.setupToken || runtimeSession?.setupToken || "", isActive: player.isActive !== false, updatedAt: player.updatedAt || player.updated_date || "" };
+  const providerId = player.providerId || player.apiCredentialSetId || player.spotifyAccountId || runtimeSession?.providerId || "";
+  const zoneId = player.zoneId || runtimeSession?.zoneId || "";
+  const sessionToken = player.sessionToken || runtimeSession?.sessionToken || "";
+  const setupToken = player.setupToken || runtimeSession?.setupToken || "";
+
+  return {
+    id: player.id,
+    name: player.name || "StudioSoundSet Player",
+    email: player.email || "",
+    providerId,
+    apiCredentialSetId: player.apiCredentialSetId || providerId,
+    spotifyAccountId: player.spotifyAccountId || providerId,
+    spotifyClientId: player.spotifyClientId || "",
+    zoneId,
+    sessionToken,
+    setupToken,
+    isActive: player.isActive !== false && runtimeSession?.isActive !== false,
+    updatedAt: player.updatedAt || player.updated_date || runtimeSession?.updatedAt || ""
+  };
 }
 
 async function ensureAssignment(base44: any, body: Record<string, any>) {
@@ -62,12 +80,12 @@ async function repairAll(base44: any) {
   const players = await base44.asServiceRole.entities.Player.list().catch(() => []);
   const repaired: any[] = [];
   for (const player of players) {
-    const providerId = player.providerId || player.apiCredentialSetId || player.spotifyAccountId || "";
-    if (!providerId) continue;
     const currentSession = await readRuntimeSession(base44, player.id);
-    const runtimeSession = { playerId: player.id, providerId, zoneId: player.zoneId || "", sessionToken: player.sessionToken || currentSession?.sessionToken || randomToken("session"), setupToken: player.setupToken || currentSession?.setupToken || randomToken("setup"), isActive: player.isActive !== false, updatedAt: nowIso() };
+    const providerId = player.providerId || player.apiCredentialSetId || player.spotifyAccountId || currentSession?.providerId || "";
+    if (!providerId) continue;
+    const runtimeSession = { playerId: player.id, providerId, zoneId: player.zoneId || currentSession?.zoneId || "", sessionToken: player.sessionToken || currentSession?.sessionToken || randomToken("session"), setupToken: player.setupToken || currentSession?.setupToken || randomToken("setup"), isActive: player.isActive !== false && currentSession?.isActive !== false, updatedAt: nowIso() };
     await upsertSetting(base44, runtimeSessionKey(player.id), runtimeSession);
-    const patch = { providerId, apiCredentialSetId: providerId, spotifyAccountId: providerId, sessionToken: runtimeSession.sessionToken, setupToken: runtimeSession.setupToken, isActive: runtimeSession.isActive, role: "player", updatedAt: nowIso() };
+    const patch = { providerId, apiCredentialSetId: providerId, spotifyAccountId: providerId, zoneId: runtimeSession.zoneId, sessionToken: runtimeSession.sessionToken, setupToken: runtimeSession.setupToken, isActive: runtimeSession.isActive, role: "player", updatedAt: nowIso() };
     const updated = await base44.asServiceRole.entities.Player.update(player.id, patch).catch(() => ({}));
     repaired.push(publicPlayer({ ...player, ...updated, ...patch }, runtimeSession));
   }
