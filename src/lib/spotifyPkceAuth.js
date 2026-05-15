@@ -131,11 +131,47 @@ export function getTokenExpiryIso(expiresInSeconds = 3600) {
   return new Date(Date.now() + Math.max(60, Number(expiresInSeconds) - 60) * 1000).toISOString();
 }
 
-export async function fetchSpotifyMe(accessToken) {
-  const response = await fetch('https://api.spotify.com/v1/me', {
-    headers: { Authorization: `Bearer ${accessToken}` },
+export function tokenLooksUsable(provider) {
+  if (!provider?.accessToken) return false;
+  if (!provider.tokenExpiresAt) return true;
+  return new Date(provider.tokenExpiresAt).getTime() > Date.now() + 30000;
+}
+
+export async function getUsableSpotifyAccessToken(provider, persistUpdatedProvider) {
+  if (tokenLooksUsable(provider)) return provider.accessToken;
+  const refreshed = await refreshSpotifyAccessToken(provider);
+  const patch = {
+    accessToken: refreshed.access_token,
+    refreshToken: refreshed.refresh_token || provider.refreshToken,
+    tokenExpiresAt: getTokenExpiryIso(refreshed.expires_in),
+    tokenStatus: 'valid',
+    status: 'connected',
+    authStatus: 'connected',
+    lastError: '',
+  };
+  if (persistUpdatedProvider) await persistUpdatedProvider(provider.id, patch).catch(() => {});
+  return patch.accessToken;
+}
+
+export async function spotifyApiRequest(path, { method = 'GET', accessToken, body } = {}) {
+  const response = await fetch(`https://api.spotify.com/v1${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
   });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error?.message || data.error || `Spotify profile failed (${response.status})`);
+
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!response.ok) {
+    const message = data?.error?.message || data?.error_description || data?.error || `Spotify API failed (${response.status})`;
+    throw new Error(message);
+  }
   return data;
+}
+
+export async function fetchSpotifyMe(accessToken) {
+  return spotifyApiRequest('/me', { accessToken });
 }
