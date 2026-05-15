@@ -4,8 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { CheckCircle2, XCircle, RefreshCw, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-
-const getRedirectUri = () => window.location.origin + '/spotify-callback';
+import { exchangeSpotifyCodeWithPkce, fetchSpotifyMe, getSpotifyRedirectUri, getTokenExpiryIso } from '@/lib/spotifyPkceAuth';
 
 export default function SpotifyCallback() {
   const [status, setStatus] = useState('loading');
@@ -22,7 +21,7 @@ export default function SpotifyCallback() {
     const code = params.get('code');
     const state = params.get('state');
     const error = params.get('error');
-    setDetail(`code=${code ? code.substring(0, 10) + '...' : 'MISSING'}, state=${state || 'MISSING'}, error=${error || 'none'}, redirectUri=${getRedirectUri()}`);
+    setDetail(`code=${code ? code.substring(0, 10) + '...' : 'MISSING'}, state=${state || 'MISSING'}, error=${error || 'none'}, redirectUri=${getSpotifyRedirectUri()}`);
     if (error) { setStatus('error'); setMessage(`Spotify hat die Verbindung abgelehnt: ${error}`); return; }
     if (!code || !state) { setStatus('error'); setMessage('Ungültige Callback-Parameter (code oder state fehlt).'); return; }
     if (!appParams.token) {
@@ -43,32 +42,39 @@ export default function SpotifyCallback() {
       const providers = await base44.entities.Provider.list();
       provider = providers.find(p => p.id === state);
       if (provider) setAccountName(provider.name || provider.displayName || 'Spotify Provider');
-      if (!provider || !provider.clientId || !provider.clientSecret) {
+      if (!provider || !provider.clientId) {
         setStatus('error');
-        setMessage('Provider hat keine Spotify Credentials. Bitte Provider bearbeiten und erneut versuchen.');
+        setMessage('Provider hat keine Spotify Client ID. Bitte Provider bearbeiten und erneut versuchen.');
         return;
       }
-      const res = await base44.functions.invoke('spotifyAuth', { action: 'exchange', code, redirectUri: getRedirectUri(), providerId: state, clientId: provider.clientId, clientSecret: provider.clientSecret });
-      if (res.data?.success) {
-        await base44.entities.Provider.update(state, {
-          status: 'connected',
-          authStatus: 'connected',
-          tokenStatus: 'valid',
-          lastError: '',
-          redirectUri: getRedirectUri(),
-          connectedAt: new Date().toISOString(),
-          spotifyUserEmail: res.data.spotifyUserEmail || provider.spotifyUserEmail || '',
-          spotifyUserId: res.data.spotifyUserId || provider.spotifyUserId || '',
-        }).catch(() => {});
-        setStatus('success');
-        setMessage('Spotify Provider erfolgreich verbunden.');
-        setTimeout(() => navigate('/spotify-accounts'), 1800);
-      } else {
-        const msg = res.data?.error || 'Token-Austausch fehlgeschlagen.';
-        await base44.entities.Provider.update(state, { status: 'error', authStatus: 'error', lastError: msg }).catch(() => {});
-        setStatus('error');
-        setMessage(msg);
-      }
+
+      const tokenData = await exchangeSpotifyCodeWithPkce({
+        code,
+        state,
+        provider,
+        redirectUri: getSpotifyRedirectUri(),
+      });
+      const profile = await fetchSpotifyMe(tokenData.access_token);
+
+      await base44.entities.Provider.update(state, {
+        status: 'connected',
+        authStatus: 'connected',
+        tokenStatus: 'valid',
+        oauthFlow: 'pkce',
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token || provider.refreshToken || '',
+        tokenExpiresAt: getTokenExpiryIso(tokenData.expires_in),
+        scope: tokenData.scope || provider.scope || '',
+        lastError: '',
+        redirectUri: getSpotifyRedirectUri(),
+        connectedAt: new Date().toISOString(),
+        spotifyUserEmail: profile.email || provider.spotifyUserEmail || '',
+        spotifyUserId: profile.id || provider.spotifyUserId || '',
+        spotifyDisplayName: profile.display_name || provider.spotifyDisplayName || '',
+      }).catch(() => {});
+      setStatus('success');
+      setMessage('Spotify Provider erfolgreich verbunden.');
+      setTimeout(() => navigate('/spotify-accounts'), 1800);
     } catch (e) {
       if (provider?.id) await base44.entities.Provider.update(provider.id, { status: 'error', authStatus: 'error', lastError: e.message }).catch(() => {});
       setStatus('error');
