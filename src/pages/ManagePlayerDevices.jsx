@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Copy, Trash2, Eye, EyeOff, Music2, CheckCircle2, AlertCircle, Wifi, WifiOff, ExternalLink } from 'lucide-react';
+import { Plus, Copy, Trash2, Eye, EyeOff, Music2, AlertCircle, Wifi, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
 import PlayerQRModal from '@/components/player/PlayerQRModal';
 import { motion } from 'framer-motion';
