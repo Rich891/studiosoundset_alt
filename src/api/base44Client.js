@@ -13,6 +13,9 @@ const client = createClient({
   appBaseUrl,
 });
 
+const COMMAND_STORE_KEY = 'sss_command_store_fallback_v1';
+const COMMAND_STATUS = { PENDING: 'pending', PICKED_UP: 'picked_up', SUCCESS: 'success', FAILED: 'failed', TIMEOUT: 'timeout' };
+
 function slugify(value = 'player') {
   return String(value)
     .trim()
@@ -35,6 +38,75 @@ function makePlayerEmail(name) {
 
 function makeSessionToken(player) {
   return player.sessionToken || player.setupToken || randomToken(`player_${player.id}`);
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function readLocalCommandStore() {
+  try { return JSON.parse(localStorage.getItem(COMMAND_STORE_KEY)) || []; }
+  catch { return []; }
+}
+
+function writeLocalCommandStore(commands) {
+  const trimmed = [...commands]
+    .sort((a, b) => new Date(b.createdAt || b.created_date || 0) - new Date(a.createdAt || a.created_date || 0))
+    .slice(0, 300);
+  localStorage.setItem(COMMAND_STORE_KEY, JSON.stringify(trimmed));
+  return trimmed;
+}
+
+async function playerCommandControlFallback(payload = {}) {
+  const action = payload.action || 'list';
+  const data = payload.payload || payload;
+  const commands = readLocalCommandStore();
+
+  if (action === 'list') {
+    const filtered = data.playerId ? commands.filter((cmd) => cmd.playerId === data.playerId) : commands;
+    return { data: { success: true, commands: filtered, fallback: true } };
+  }
+
+  if (action === 'create') {
+    if (!data.playerId) throw new Error('playerId fehlt.');
+    const type = data.type || data.command;
+    if (!type) throw new Error('Command type fehlt.');
+    const createdAt = nowIso();
+    const command = {
+      id: crypto.randomUUID(),
+      playerId: data.playerId,
+      providerId: data.providerId || '',
+      zoneId: data.zoneId || '',
+      type,
+      command: type,
+      payload: data.payload || {},
+      status: COMMAND_STATUS.PENDING,
+      createdAt,
+      created_date: createdAt,
+      humanMessage: data.humanMessage || 'Command sent locally. Backend command function is not deployed yet.',
+      pickedUpAt: '',
+      completedAt: '',
+      errorCode: 'COMMAND_BACKEND_FALLBACK',
+    };
+    writeLocalCommandStore([command, ...commands]);
+    return { data: { success: true, command, fallback: true } };
+  }
+
+  if (action === 'markTimeouts') {
+    const cutoff = Date.now() - Number(data.timeoutMs || 10000);
+    let changed = 0;
+    const updated = commands.map((cmd) => {
+      if (data.playerId && cmd.playerId !== data.playerId) return cmd;
+      if (cmd.status !== COMMAND_STATUS.PENDING) return cmd;
+      if (new Date(cmd.createdAt || cmd.created_date || 0).getTime() >= cutoff) return cmd;
+      changed += 1;
+      return { ...cmd, status: COMMAND_STATUS.TIMEOUT, completedAt: nowIso(), errorCode: 'COMMAND_TIMEOUT', humanMessage: 'The Player did not pick up this command in time.' };
+    });
+    writeLocalCommandStore(updated);
+    return { data: { success: true, changed, fallback: true } };
+  }
+
+  throw new Error(`Base44 Function playerCommandControl fehlt und es gibt keinen Fallback für action=${action}.`);
 }
 
 async function getProvider(accountId) {
@@ -182,6 +254,7 @@ client.functions.invoke = async (name, payload) => {
       if (name === 'spotifyAccountControl') return spotifyAccountControlFallback(payload);
       if (name === 'createPlayerUserNew') return createPlayerUserFallback(payload);
       if (name === 'playerAuthLogin') return playerAuthLoginFallback(payload);
+      if (name === 'playerCommandControl') return playerCommandControlFallback(payload);
     }
     throw error;
   }
