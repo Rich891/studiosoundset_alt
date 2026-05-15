@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Copy, Trash2, Eye, EyeOff, Music2, AlertCircle, Wifi, WifiOff, QrCode, Wrench, CheckCircle2, PlugZap, MapPin } from 'lucide-react';
+import { Plus, Copy, Trash2, Eye, EyeOff, Music2, AlertCircle, Wifi, WifiOff, QrCode, Wrench, CheckCircle2, PlugZap } from 'lucide-react';
 import { toast } from 'sonner';
 import PlayerSetupModal from '@/components/player/PlayerSetupModal';
 import { motion } from 'framer-motion';
@@ -19,6 +19,19 @@ const EMPTY_FORM = { name: '', providerId: '', zoneId: '', passwordHash: '' };
 const EMPTY_EDIT = { player: null, providerId: '', zoneId: '' };
 const EMPTY_ZONE = { name: '', color: '#7c3aed', defaultVolume: 50, minVolume: 10, maxVolume: 90 };
 
+function randomToken(prefix = 'session') {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return `${prefix}_${Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function ensureRuntimeTokens(player = {}) {
+  return {
+    sessionToken: player.sessionToken || randomToken('session'),
+    setupToken: player.setupToken || randomToken('setup'),
+  };
+}
+
 export default function ManagePlayerDevices() {
   const queryClient = useQueryClient();
   const [showDialog, setShowDialog] = useState(false);
@@ -27,7 +40,7 @@ export default function ManagePlayerDevices() {
   const [zoneForm, setZoneForm] = useState(EMPTY_ZONE);
   const [showPassword, setShowPassword] = useState({});
   const [setupModalOpen, setSetupModalOpen] = useState(false);
-  const [setupData, setSetupData] = useState({ playerId: '', providerId: '', providerClientId: '', zoneId: '', deviceName: '' });
+  const [setupData, setSetupData] = useState({ playerId: '', providerId: '', providerClientId: '', zoneId: '', sessionToken: '', deviceName: '' });
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [editAssignment, setEditAssignment] = useState(EMPTY_EDIT);
 
@@ -49,6 +62,7 @@ export default function ManagePlayerDevices() {
   const persistPlayerAssignment = async (player, providerId, zoneId) => {
     const provider = providersById[providerId];
     const zone = zonesById[zoneId];
+    const tokens = ensureRuntimeTokens(player);
     await savePlayerConfig(player, {
       providerId,
       providerName: provider?.name || provider?.displayName || '',
@@ -60,9 +74,13 @@ export default function ManagePlayerDevices() {
       ...buildPlayerProviderPatch(providerId),
       spotifyClientId: provider?.clientId || player?.spotifyClientId || '',
       zoneId: zoneId || '',
+      sessionToken: tokens.sessionToken,
+      setupToken: tokens.setupToken,
+      isActive: true,
       lastError: '',
       updatedAt: new Date().toISOString(),
     }).catch(() => {});
+    return { ...player, ...buildPlayerProviderPatch(providerId), spotifyClientId: provider?.clientId || player?.spotifyClientId || '', zoneId: zoneId || '', ...tokens };
   };
 
   const createMutation = useMutation({
@@ -78,13 +96,11 @@ export default function ManagePlayerDevices() {
       });
       if (!response.data?.success) throw new Error(response.data?.error || 'Player konnte nicht erstellt werden.');
       const player = response.data.playerUser;
-      const hydrated = { ...player, ...buildPlayerProviderPatch(providerId), spotifyClientId: provider?.clientId || '', zoneId: data.zoneId || '' };
-      await persistPlayerAssignment(hydrated, providerId, data.zoneId || '');
-      return hydrated;
+      return persistPlayerAssignment({ ...player, spotifyClientId: provider?.clientId || '' }, providerId, data.zoneId || '');
     },
     onSuccess: (player) => {
       refresh();
-      toast.success('Player erstellt und API-Zuweisung gespeichert.');
+      toast.success('Player erstellt, API-Zuweisung und Runtime Session gespeichert.');
       openSetup(player);
       setShowDialog(false);
       setFormData(EMPTY_FORM);
@@ -99,7 +115,7 @@ export default function ManagePlayerDevices() {
     },
     onSuccess: () => {
       refresh();
-      toast.success('Player-Zuweisung gespeichert.');
+      toast.success('Player-Zuweisung und Runtime Session gespeichert. Bitte neuen Player-Link öffnen.');
       setEditAssignment(EMPTY_EDIT);
     },
     onError: (err) => toast.error(`Zuweisung konnte nicht gespeichert werden: ${err.message}`),
@@ -112,7 +128,7 @@ export default function ManagePlayerDevices() {
   });
 
   const createZoneMutation = useMutation({
-    mutationFn: (data) => base44.entities.Zone.create({ ...data, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
+    mutationFn: (data) => base44.entities.Zone.create({ ...data, providerId: '', apiCredentialSetId: '', spotifyAccountId: '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
     onSuccess: (zone) => {
       queryClient.invalidateQueries({ queryKey: ['zones'] });
       toast.success('Zone erstellt.');
@@ -143,11 +159,15 @@ export default function ManagePlayerDevices() {
     setFormData({ ...formData, passwordHash: pwd });
   };
 
-  const openSetup = (player) => {
-    const merged = mergePlayerWithConfig(player, configByPlayer[player.id]);
+  const openSetup = async (player) => {
+    let merged = mergePlayerWithConfig(player, configByPlayer[player.id]);
+    if (!merged.sessionToken || !merged.setupToken) {
+      merged = await persistPlayerAssignment(merged, getPlayerProviderId(merged), merged.zoneId || '');
+      refresh();
+    }
     const providerId = getPlayerProviderId(merged);
     const provider = providersById[providerId];
-    setSetupData({ playerId: merged.id, providerId, providerClientId: provider?.clientId || merged.spotifyClientId || '', zoneId: merged.zoneId || '', deviceName: merged.name });
+    setSetupData({ playerId: merged.id, providerId, providerClientId: provider?.clientId || merged.spotifyClientId || '', zoneId: merged.zoneId || '', sessionToken: merged.sessionToken || merged.setupToken || '', deviceName: merged.name });
     setSetupModalOpen(true);
   };
 
@@ -166,7 +186,7 @@ export default function ManagePlayerDevices() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-black">Players</h1>
-          <p className="text-sm text-muted-foreground mt-1">Studio → Admin → Provider/API → Player Accounts → Player Sessions → Playlists → Commands. Zonen sind nur optionale Räume.</p>
+          <p className="text-sm text-muted-foreground mt-1">Provider/API gehört direkt an den Player. Zonen sind nur optionale Räume und Default-Werte.</p>
         </div>
         <Button onClick={() => setShowDialog(true)} className="gap-2 bg-primary hover:bg-primary/90"><Plus className="w-4 h-4" />Neuer Player</Button>
       </div>
@@ -175,15 +195,15 @@ export default function ManagePlayerDevices() {
         <div className="flex gap-3">
           <PlugZap className="w-5 h-5 text-cyan-300 mt-0.5 flex-shrink-0" />
           <div className="space-y-1 text-sm">
-            <p className="font-black text-cyan-200">Finaler Flow</p>
-            <p className="text-muted-foreground">Provider/API anlegen → Player erstellen → Zone optional direkt hier erstellen/zuweisen → Player-Link auf dem Gerät öffnen → Spotify direkt am Player verbinden.</p>
+            <p className="font-black text-cyan-200">Optimierter Flow</p>
+            <p className="text-muted-foreground">Provider verbinden → Player erstellen/Provider zuweisen → Zone optional hier erstellen/setzen → Player-Link öffnen. Der öffentliche Player schreibt nur über publicPlayerRuntime.</p>
           </div>
         </div>
       </div>
 
       {playerError && <div className="bento-panel border-red-500/20 bg-red-500/5 p-4 text-sm text-red-300">Player konnten nicht geladen werden: {playerError.message}</div>}
-      {connectedProviders.length === 0 && <div className="bento-panel border-yellow-500/20 bg-yellow-500/5 p-5 flex items-center gap-3"><AlertCircle className="w-5 h-5 text-yellow-400" /><p className="text-sm text-yellow-300">Keine verbundene API-Verbindung. Erstelle und verbinde zuerst einen Spotify Provider im Provider / API Center.</p></div>}
-      {playersMissingApi.length > 0 && <div className="bento-panel border-yellow-500/20 bg-yellow-500/5 p-5 flex items-start gap-3"><Wrench className="w-5 h-5 text-yellow-400 mt-0.5" /><div><p className="font-bold text-yellow-200">{playersMissingApi.length} Player brauchen eine API-Zuweisung</p><p className="text-sm text-yellow-300/80">Öffne „Zuweisung bearbeiten“ und speichere eine API-Verbindung direkt am Player. Diese Zuweisung wird unabhängig vom Player-Schema im Config-Log gespeichert.</p></div></div>}
+      {connectedProviders.length === 0 && <div className="bento-panel border-yellow-500/20 bg-yellow-500/5 p-5 flex items-center gap-3"><AlertCircle className="w-5 h-5 text-yellow-400" /><p className="text-sm text-yellow-300">Keine verbundene API-Verbindung. Erstelle und verbinde zuerst einen Spotify Provider.</p></div>}
+      {playersMissingApi.length > 0 && <div className="bento-panel border-yellow-500/20 bg-yellow-500/5 p-5 flex items-start gap-3"><Wrench className="w-5 h-5 text-yellow-400 mt-0.5" /><div><p className="font-bold text-yellow-200">{playersMissingApi.length} Player brauchen eine API-Zuweisung</p><p className="text-sm text-yellow-300/80">Öffne „Zuweisung bearbeiten“, wähle einen Provider und öffne danach den neuen Player-Link.</p></div></div>}
 
       <div className="grid gap-4">
         {players.length === 0 ? (
@@ -193,6 +213,7 @@ export default function ManagePlayerDevices() {
           const provider = providersById[providerId];
           const online = isPlayerOnline(player);
           const isConnected = providerStatus(provider) === 'connected';
+          const hasRuntimeToken = !!(player.sessionToken || player.setupToken);
           return (
             <motion.div key={player.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.04 }}>
               <div className="bento-panel p-5 space-y-4">
@@ -204,6 +225,7 @@ export default function ManagePlayerDevices() {
                       <span className={`text-xs font-semibold ${online ? 'text-green-400' : 'text-yellow-400'}`}>{online ? 'Online' : 'Offline'}</span>
                       {player.sdkReady && <span className="text-xs text-cyan-400">SDK Ready</span>}
                       {providerId && <span className="text-xs text-green-400 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> API am Player</span>}
+                      <span className={`text-xs ${hasRuntimeToken ? 'text-green-400' : 'text-red-300'}`}>{hasRuntimeToken ? 'Runtime Session OK' : 'Runtime Session fehlt'}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
@@ -216,7 +238,7 @@ export default function ManagePlayerDevices() {
                   <div className={`rounded-lg p-3 border ${providerId ? 'bg-muted/20 border-border/30' : 'bg-red-500/5 border-red-500/20'}`}>
                     <p className="text-xs text-muted-foreground font-semibold mb-1">API-Verbindung</p>
                     <p className="font-bold text-sm">{provider ? getProviderDisplayName(provider) : providerId ? 'Provider nicht gefunden' : 'Nicht zugewiesen'}</p>
-                    <p className={`text-xs mt-1 ${isConnected ? 'text-green-400' : providerId ? 'text-yellow-400' : 'text-red-300'}`}>{provider ? providerStatus(provider) : providerId ? 'im Config-Log gespeichert' : 'Keine API-Verbindung'}</p>
+                    <p className={`text-xs mt-1 ${isConnected ? 'text-green-400' : providerId ? 'text-yellow-400' : 'text-red-300'}`}>{provider ? providerStatus(provider) : providerId ? 'am Player gespeichert' : 'Keine API-Verbindung'}</p>
                   </div>
                   <div className="bg-muted/20 rounded-lg p-3 border border-border/30"><p className="text-xs text-muted-foreground font-semibold mb-1">Zone</p><p className="font-bold text-sm">{getZoneName(player)}</p><p className="text-xs text-muted-foreground mt-1">optional</p></div>
                   <div className="bg-muted/20 rounded-lg p-3 border border-border/30"><p className="text-xs text-muted-foreground font-semibold mb-1">Device ID</p><p className="font-mono text-xs break-all">{player.spotifyDeviceId || '—'}</p></div>
@@ -240,7 +262,7 @@ export default function ManagePlayerDevices() {
         })}
       </div>
 
-      <PlayerSetupModal open={setupModalOpen} onOpenChange={setSetupModalOpen} playerId={setupData.playerId} providerId={setupData.providerId} providerClientId={setupData.providerClientId} zoneId={setupData.zoneId} deviceName={setupData.deviceName} />
+      <PlayerSetupModal open={setupModalOpen} onOpenChange={setSetupModalOpen} playerId={setupData.playerId} providerId={setupData.providerId} providerClientId={setupData.providerClientId} zoneId={setupData.zoneId} sessionToken={setupData.sessionToken} deviceName={setupData.deviceName} />
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="max-w-md"><DialogHeader><DialogTitle>Neuer Player</DialogTitle></DialogHeader><div className="space-y-4"><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Player-Name</label><Input placeholder="z.B. Gym Player" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} /></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">API-Verbindung</label><Select value={formData.providerId} onValueChange={(value) => setFormData({ ...formData, providerId: value })}><SelectTrigger><SelectValue placeholder="API-Verbindung wählen" /></SelectTrigger><SelectContent>{providers.length === 0 ? <SelectItem disabled value="none">Keine API-Verbindung konfiguriert</SelectItem> : providers.map((acc) => <SelectItem key={acc.id} value={acc.id}>{getProviderDisplayName(acc)} {providerStatus(acc) === 'connected' ? '✓' : '(nicht verbunden)'}</SelectItem>)}</SelectContent></Select></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Zone / Raum optional</label><div className="flex gap-2"><Select value={formData.zoneId || 'none'} onValueChange={(value) => setFormData({ ...formData, zoneId: value })}><SelectTrigger><SelectValue placeholder="Zone wählen" /></SelectTrigger><SelectContent><SelectItem value="none">Keine</SelectItem>{zones.map((zone) => <SelectItem key={zone.id} value={zone.id}>{zone.name}</SelectItem>)}</SelectContent></Select><Button type="button" variant="outline" onClick={() => openZoneDialog('create')}>+ Zone</Button></div></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Player-Passwort optional</label><div className="flex gap-2"><Input type="text" placeholder="optional" value={formData.passwordHash} onChange={(e) => setFormData({ ...formData, passwordHash: e.target.value })} /><Button type="button" variant="outline" onClick={generatePassword} className="whitespace-nowrap">Generieren</Button></div></div><div className="flex gap-2 pt-4"><Button variant="outline" onClick={() => setShowDialog(false)} className="flex-1">Abbrechen</Button><Button onClick={handleCreate} disabled={createMutation.isPending} className="flex-1">{createMutation.isPending ? 'Erstelle...' : 'Erstellen'}</Button></div></div></DialogContent>
