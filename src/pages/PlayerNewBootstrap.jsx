@@ -20,8 +20,9 @@ export default function PlayerNewBootstrap() {
       const params = new URLSearchParams(window.location.search);
       const stored = readStoredPlayer();
       const playerId = params.get('playerId') || stored?.id || '';
-      const providerId = params.get('providerId') || getPlayerProviderId(stored || {}, {});
+      const providerId = params.get('providerId') || getPlayerProviderId(stored || {});
       const zoneId = params.get('zoneId') || stored?.zoneId || '';
+      const spotifyClientId = params.get('cid') || stored?.spotifyClientId || stored?.clientId || '';
 
       if (playerId || stored?.id) {
         const merged = {
@@ -29,9 +30,9 @@ export default function PlayerNewBootstrap() {
           ...(playerId ? { id: playerId } : {}),
           ...(params.get('name') ? { name: params.get('name') } : {}),
           ...(params.get('email') ? { email: params.get('email') } : {}),
-          ...(params.get('password') ? { passwordHash: params.get('password') } : {}),
           ...(providerId ? { providerId, apiCredentialSetId: providerId, spotifyAccountId: providerId } : {}),
           ...(zoneId ? { zoneId } : {}),
+          ...(spotifyClientId ? { spotifyClientId, clientId: spotifyClientId } : {}),
           role: 'player',
           isActive: true,
         };
@@ -43,10 +44,11 @@ export default function PlayerNewBootstrap() {
         base44.entities.Player.update(playerId, {
           ...buildPlayerProviderPatch(providerId),
           ...(zoneId ? { zoneId } : {}),
+          ...(spotifyClientId ? { spotifyClientId } : {}),
           isActive: true,
           role: 'player',
           updatedAt: new Date().toISOString(),
-        }).catch((error) => console.warn('Public player bootstrap could not repair server assignment.', error));
+        }).catch(() => {});
       }
 
       if (!cancelled) {
