@@ -1,32 +1,28 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Music2, MapPin, Radio, Calendar,
-  Settings, Activity, FileText, ChevronRight, Zap, LogOut, User, Headphones, Plus, Terminal, Globe
+  LayoutDashboard, Music2, Radio, Calendar,
+  Settings, Activity, FileText, ChevronRight, Zap, LogOut, User, Headphones, Terminal, Globe
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 
 const NAV_GROUPS = [
-  { title: 'Control', items: [
+  { title: 'Core', items: [
     { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/manage-players', label: 'Players', icon: Headphones, highlight: true },
     { path: '/now-playing', label: 'Now Playing', icon: Radio },
-    { path: '/player', label: 'Browser Player', icon: Headphones, highlight: true },
-    { path: '/manage-players', label: 'Player verwalten', icon: Plus, highlight: true },
-    { path: '/calendar', label: 'Zeitplaner', icon: Calendar },
-  ]},
-  { title: 'Music', items: [
     { path: '/playlists', label: 'Playlists', icon: Music2 },
-    { path: '/spotify-accounts', label: 'Spotify Provider', icon: Music2 },
+    { path: '/calendar', label: 'Calendar', icon: Calendar },
   ]},
-  { title: 'System', items: [
-    { path: '/commands', label: 'Commands', icon: Terminal },
-    { path: '/system-check', label: 'System Check', icon: Activity },
-    { path: '/logs', label: 'Logs', icon: FileText },
-  ]},
-  { title: 'Admin', items: [
-    { path: '/zones', label: 'Zonen', icon: MapPin },
+  { title: 'Setup', items: [
+    { path: '/spotify-accounts', label: 'Provider / API Center', icon: Music2 },
     { path: '/settings/network', label: 'Network', icon: Globe },
-    { path: '/settings', label: 'Einstellungen', icon: Settings },
+    { path: '/settings', label: 'Settings', icon: Settings },
+  ]},
+  { title: 'Diagnostics', items: [
+    { path: '/system-check', label: 'System Check', icon: Activity },
+    { path: '/commands', label: 'Commands', icon: Terminal },
+    { path: '/logs', label: 'Logs', icon: FileText },
   ]},
 ];
 
@@ -41,7 +37,7 @@ export default function Sidebar() {
       <div className="p-6 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center"><Zap className="w-5 h-5 text-primary" /></div>
-          <div><p className="font-black text-sm gradient-text">StudioSoundSet</p><p className="text-[10px] text-muted-foreground">Multi-Zone Control</p></div>
+          <div><p className="font-black text-sm gradient-text">StudioSoundSet</p><p className="text-[10px] text-muted-foreground">Player-based Control</p></div>
         </div>
       </div>
 
@@ -76,7 +72,7 @@ export default function Sidebar() {
         ) : (
           <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20"><User className="w-3 h-3 text-red-400" /><button onClick={() => base44.auth.redirectToLogin('/dashboard')} className="text-[10px] text-blue-400 underline">Einloggen</button></div>
         )}
-        <p className="text-[10px] text-muted-foreground">Admin und Player bitte getrennt testen.</p>
+        <p className="text-[10px] text-muted-foreground">Player ist die zentrale Einheit. Zonen sind nur Räume/Defaults.</p>
       </div>
     </aside>
   );
