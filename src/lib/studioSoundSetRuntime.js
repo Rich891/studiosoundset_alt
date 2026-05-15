@@ -146,6 +146,13 @@ export async function sendPublicPlayerCommandResult(player, payload) {
   });
 }
 
+export async function listPublicPlayerPlaylists(player) {
+  return publicPlayerRuntime('listPlaylists', {
+    playerId: player?.id,
+    sessionToken: getStoredPlayerSessionToken(player),
+  });
+}
+
 export async function syncPlayerStatusFromSdk({ sdkPlayer, player, spotifyDeviceId, sdkReady, sdkConnected, extra = {} }) {
   if (!player?.id) return null;
   let state = null;
