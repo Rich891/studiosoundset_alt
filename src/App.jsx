@@ -5,10 +5,8 @@ import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'r
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
-// Layout
 import AppLayout from '@/components/layout/AppLayout';
 
-// Pages
 import PublicLogin from './pages/PublicLogin';
 import Dashboard from './pages/Dashboard';
 import SpotifyAccounts from './pages/SpotifyAccounts';
@@ -20,31 +18,29 @@ import Calendar from './pages/Calendar';
 import SystemCheck from './pages/SystemCheck';
 import Logs from './pages/Logs';
 import Settings from './pages/Settings';
+import NetworkSettings from './pages/NetworkSettings';
+import Commands from './pages/Commands';
 import NotFound from './pages/NotFound';
 import Player from './pages/Player';
 import PlayerNew from './pages/PlayerNew';
 import AddPlayerDevice from './pages/AddPlayerDevice';
 import PlayerPairing from './pages/PlayerPairing';
 import ManagePlayerDevices from './pages/ManagePlayerDevices';
-import PlayerLoginIndex from './pages/PlayerLoginIndex';
+
+const PUBLIC_PATHS = new Set(['/', '/spotify-callback', '/player-pairing', '/player-new', '/player-login']);
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, isAuthenticated } = useAuth();
   const location = useLocation();
 
-  // Public routes (login, callbacks, player)
-  if (
-    location.pathname === '/' ||
-    location.pathname === '/spotify-callback' ||
-    location.pathname === '/player-pairing' ||
-    location.pathname === '/player-new'
-  ) {
+  if (PUBLIC_PATHS.has(location.pathname)) {
     return (
       <Routes>
         <Route path="/" element={<PublicLogin />} />
         <Route path="/spotify-callback" element={<SpotifyCallback />} />
         <Route path="/player-pairing" element={<PlayerPairing />} />
         <Route path="/player-new" element={<PlayerNew />} />
+        <Route path="/player-login" element={<Navigate to="/player-new" replace />} />
       </Routes>
     );
   }
@@ -81,8 +77,10 @@ const AuthenticatedApp = () => {
         <Route path="/playlists" element={<Playlists />} />
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/system-check" element={<SystemCheck />} />
+        <Route path="/commands" element={<Commands />} />
         <Route path="/logs" element={<Logs />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/settings/network" element={<NetworkSettings />} />
         <Route path="/player" element={<Player />} />
         <Route path="/add-player-device" element={<AddPlayerDevice />} />
         <Route path="/manage-players" element={<ManagePlayerDevices />} />
