@@ -3,10 +3,19 @@ import { Button } from '@/components/ui/button';
 import { Copy, Download, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 
-export default function PlayerQRModal({ open, onOpenChange, email, password, deviceName }) {
+export default function PlayerQRModal({ open, onOpenChange, playerId, providerId, zoneId, email, password, deviceName }) {
   if (!email || !password) return null;
 
-  const loginUrl = `${window.location.origin}/player-new?email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`;
+  const loginParams = new URLSearchParams({
+    email,
+    password,
+    name: deviceName || 'StudioSoundSet Player',
+  });
+  if (playerId) loginParams.set('playerId', playerId);
+  if (providerId) loginParams.set('providerId', providerId);
+  if (zoneId) loginParams.set('zoneId', zoneId);
+
+  const loginUrl = `${window.location.origin}/player-new?${loginParams.toString()}`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(loginUrl)}`;
 
   const handleCopyCredentials = () => {
@@ -35,6 +44,8 @@ export default function PlayerQRModal({ open, onOpenChange, email, password, dev
             <p className="font-mono text-xs break-all">{loginUrl}</p>
             <p className="text-xs text-muted-foreground font-semibold mt-3">Gerätename</p>
             <p className="font-mono text-sm break-all">{deviceName}</p>
+            <p className="text-xs text-muted-foreground font-semibold mt-3">Player ID</p>
+            <p className="font-mono text-xs break-all">{playerId || '—'}</p>
             <p className="text-xs text-muted-foreground font-semibold mt-3">Email</p>
             <p className="font-mono text-sm break-all">{email}</p>
             <p className="text-xs text-muted-foreground font-semibold mt-3">Passwort</p>
@@ -47,7 +58,7 @@ export default function PlayerQRModal({ open, onOpenChange, email, password, dev
           </div>
           <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => window.open(loginUrl, '_blank', 'noopener,noreferrer')}><ExternalLink className="w-4 h-4" /> Player Login öffnen</Button>
 
-          <p className="text-xs text-muted-foreground text-center">Der QR-Code öffnet direkt die Player-Login-Seite auf dieser Base44 HTTPS-Domain.</p>
+          <p className="text-xs text-muted-foreground text-center">Der QR-Code enthält die Player-ID. Dadurch kann der Player auch starten, wenn Base44 Functions fehlen.</p>
         </div>
       </DialogContent>
     </Dialog>
