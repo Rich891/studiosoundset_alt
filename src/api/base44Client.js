@@ -21,13 +21,20 @@ function slugify(value = 'player') {
     .replace(/^-+|-+$/g, '') || 'player';
 }
 
+function randomToken(prefix = 'token') {
+  const random = new Uint8Array(24);
+  crypto.getRandomValues(random);
+  const value = Array.from(random, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${prefix}_${value}`;
+}
+
 function makePlayerEmail(name) {
   const suffix = Math.random().toString(36).slice(2, 8);
   return `${slugify(name)}-${suffix}@studiosoundset.player`;
 }
 
 function makeSessionToken(player) {
-  return `player_${player.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  return player.sessionToken || player.setupToken || randomToken(`player_${player.id}`);
 }
 
 async function getProvider(accountId) {
@@ -102,6 +109,8 @@ async function createPlayerUserFallback(payload = {}) {
   if (!providerId) throw new Error('Spotify Provider fehlt.');
   if (!passwordHash) throw new Error('Player Passwort fehlt.');
 
+  const setupToken = randomToken('setup');
+  const sessionToken = randomToken('session');
   const playerPayload = {
     name,
     email: payload.email || makePlayerEmail(name),
@@ -117,6 +126,8 @@ async function createPlayerUserFallback(payload = {}) {
     sdkReady: false,
     sdkConnected: false,
     spotifyDeviceId: '',
+    setupToken,
+    sessionToken,
     lastCommand: '',
     lastCommandStatus: '',
     lastError: '',
@@ -137,7 +148,9 @@ async function playerAuthLoginFallback(payload = {}) {
   const player = (matches || []).find((candidate) => candidate.passwordHash === password && candidate.isActive !== false);
   if (!player) return { data: { success: false, error: 'Player Login ungültig oder Player deaktiviert.' } };
 
+  const sessionToken = makeSessionToken(player);
   const patch = {
+    sessionToken,
     status: 'online',
     isOnline: true,
     lastSeen: new Date().toISOString(),
@@ -149,7 +162,7 @@ async function playerAuthLoginFallback(payload = {}) {
   return {
     data: {
       success: true,
-      sessionToken: makeSessionToken(player),
+      sessionToken,
       player: { ...player, ...patch },
       fallback: true,
     },
