@@ -1,0 +1,4 @@
+{
+  "name": "publicPlayerRuntime",
+  "entry": "entry.ts"
+}
