@@ -23,7 +23,7 @@ import NetworkSettings from './pages/NetworkSettings';
 import Commands from './pages/Commands';
 import NotFound from './pages/NotFound';
 import Player from './pages/Player';
-import PlayerNew from './pages/PlayerNew';
+import PlayerNewBootstrap from './pages/PlayerNewBootstrap';
 import AddPlayerDevice from './pages/AddPlayerDevice';
 import PlayerPairing from './pages/PlayerPairing';
 import ManagePlayerDevices from './pages/ManagePlayerDevices';
@@ -40,21 +40,14 @@ const AuthenticatedApp = () => {
         <Route path="/" element={<PublicLogin />} />
         <Route path="/spotify-callback" element={<SpotifyCallback />} />
         <Route path="/player-pairing" element={<PlayerPairing />} />
-        <Route path="/player-new" element={<PlayerNew />} />
+        <Route path="/player-new" element={<PlayerNewBootstrap />} />
         <Route path="/player-login" element={<Navigate to="/player-new" replace />} />
       </Routes>
     );
   }
 
   if (isLoadingPublicSettings || isLoadingAuth) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center aurora-bg">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">Lade StudioSoundSet...</p>
-        </div>
-      </div>
-    );
+    return <div className="fixed inset-0 flex items-center justify-center aurora-bg"><div className="flex flex-col items-center gap-3"><div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" /><p className="text-sm text-muted-foreground">Lade StudioSoundSet...</p></div></div>;
   }
 
   if (authError) {
