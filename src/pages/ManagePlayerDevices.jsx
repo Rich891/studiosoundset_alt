@@ -60,27 +60,39 @@ export default function ManagePlayerDevices() {
   };
 
   const persistPlayerAssignment = async (player, providerId, zoneId) => {
+    if (!player?.id) throw new Error('Player fehlt.');
+    if (!providerId) throw new Error('API-Verbindung fehlt. Wähle einen verbundenen Provider.');
     const provider = providersById[providerId];
     const zone = zonesById[zoneId];
     const tokens = ensureRuntimeTokens(player);
-    await savePlayerConfig(player, {
-      providerId,
-      providerName: provider?.name || provider?.displayName || '',
-      spotifyClientId: provider?.clientId || player?.spotifyClientId || '',
-      zoneId: zoneId || '',
-      zoneName: zone?.name || '',
-    });
-    await base44.entities.Player.update(player.id, {
+    const patch = {
       ...buildPlayerProviderPatch(providerId),
       spotifyClientId: provider?.clientId || player?.spotifyClientId || '',
       zoneId: zoneId || '',
       sessionToken: tokens.sessionToken,
       setupToken: tokens.setupToken,
       isActive: true,
+      role: 'player',
       lastError: '',
       updatedAt: new Date().toISOString(),
-    }).catch(() => {});
-    return { ...player, ...buildPlayerProviderPatch(providerId), spotifyClientId: provider?.clientId || player?.spotifyClientId || '', zoneId: zoneId || '', ...tokens };
+    };
+
+    await savePlayerConfig(player, {
+      providerId,
+      providerName: provider?.name || provider?.displayName || '',
+      spotifyClientId: provider?.clientId || player?.spotifyClientId || '',
+      zoneId: zoneId || '',
+      zoneName: zone?.name || '',
+      sessionToken: tokens.sessionToken,
+      setupToken: tokens.setupToken,
+    });
+
+    const updated = await base44.entities.Player.update(player.id, patch);
+    const verified = { ...player, ...updated, ...patch };
+    if (!verified.sessionToken && !verified.setupToken) {
+      throw new Error('Runtime Session konnte nicht am Player gespeichert werden. Kein Player-Link wird erzeugt.');
+    }
+    return verified;
   };
 
   const createMutation = useMutation({
@@ -110,13 +122,13 @@ export default function ManagePlayerDevices() {
 
   const updateAssignmentMutation = useMutation({
     mutationFn: async ({ player, providerId, zoneId }) => {
-      if (!player?.id) throw new Error('Player fehlt.');
-      await persistPlayerAssignment(player, providerId, zoneId === 'none' ? '' : zoneId);
+      return persistPlayerAssignment(player, providerId, zoneId === 'none' ? '' : zoneId);
     },
-    onSuccess: () => {
+    onSuccess: (player) => {
       refresh();
       toast.success('Player-Zuweisung und Runtime Session gespeichert. Bitte neuen Player-Link öffnen.');
       setEditAssignment(EMPTY_EDIT);
+      openSetup(player);
     },
     onError: (err) => toast.error(`Zuweisung konnte nicht gespeichert werden: ${err.message}`),
   });
@@ -161,11 +173,20 @@ export default function ManagePlayerDevices() {
 
   const openSetup = async (player) => {
     let merged = mergePlayerWithConfig(player, configByPlayer[player.id]);
-    if (!merged.sessionToken || !merged.setupToken) {
-      merged = await persistPlayerAssignment(merged, getPlayerProviderId(merged), merged.zoneId || '');
-      refresh();
-    }
     const providerId = getPlayerProviderId(merged);
+    if (!providerId) {
+      toast.error('Dieser Player hat keine API-Verbindung. Zuweisung bearbeiten.');
+      return;
+    }
+    if (!merged.sessionToken || !merged.setupToken) {
+      try {
+        merged = await persistPlayerAssignment(merged, providerId, merged.zoneId || '');
+        refresh();
+      } catch (e) {
+        toast.error(`Runtime Session konnte nicht erzeugt werden: ${e.message}`);
+        return;
+      }
+    }
     const provider = providersById[providerId];
     setSetupData({ playerId: merged.id, providerId, providerClientId: provider?.clientId || merged.spotifyClientId || '', zoneId: merged.zoneId || '', sessionToken: merged.sessionToken || merged.setupToken || '', deviceName: merged.name });
     setSetupModalOpen(true);
