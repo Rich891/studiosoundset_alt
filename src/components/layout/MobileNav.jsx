@@ -1,21 +1,19 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, LayoutDashboard, Music2, MapPin, Radio, Calendar, Settings, Activity, Zap, Terminal, Globe, Plus, Headphones, FileText } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Music2, Radio, Calendar, Settings, Activity, Zap, Terminal, Globe, Headphones, FileText } from 'lucide-react';
 
 const NAV = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/manage-players', label: 'Players', icon: Headphones },
   { path: '/now-playing', label: 'Now Playing', icon: Radio },
-  { path: '/player', label: 'Browser Player', icon: Headphones },
-  { path: '/manage-players', label: 'Player verwalten', icon: Plus },
   { path: '/playlists', label: 'Playlists', icon: Music2 },
-  { path: '/spotify-accounts', label: 'Spotify Provider', icon: Music2 },
-  { path: '/calendar', label: 'Zeitplaner', icon: Calendar },
-  { path: '/commands', label: 'Commands', icon: Terminal },
+  { path: '/calendar', label: 'Calendar', icon: Calendar },
+  { path: '/spotify-accounts', label: 'Provider / API Center', icon: Music2 },
   { path: '/system-check', label: 'System Check', icon: Activity },
+  { path: '/commands', label: 'Commands', icon: Terminal },
   { path: '/logs', label: 'Logs', icon: FileText },
-  { path: '/zones', label: 'Zonen', icon: MapPin },
   { path: '/settings/network', label: 'Network', icon: Globe },
-  { path: '/settings', label: 'Einstellungen', icon: Settings },
+  { path: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function MobileNav() {
