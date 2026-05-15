@@ -20,15 +20,13 @@ async function getRuntimeSession(base44: any, playerId: string) {
   const row = await readSetting(base44, runtimeSessionKey(playerId));
   const raw = row?.value;
   if (!raw) return null;
-  try { return typeof raw === "string" ? JSON.parse(raw) : raw; }
-  catch { return { sessionToken: String(raw) }; }
+  try { return typeof raw === "string" ? JSON.parse(raw) : raw; } catch { return { sessionToken: String(raw) }; }
 }
 async function readCommands(base44: any) {
   const row = await readSetting(base44, STORE_KEY);
   const raw = row?.value;
   if (!raw) return [];
-  try { const parsed = typeof raw === "string" ? JSON.parse(raw) : raw; return Array.isArray(parsed) ? parsed : []; }
-  catch { return []; }
+  try { const parsed = typeof raw === "string" ? JSON.parse(raw) : raw; return Array.isArray(parsed) ? parsed : []; } catch { return []; }
 }
 async function writeCommands(base44: any, commands: any[]) {
   const trimmed = [...commands].sort((a, b) => new Date(b.createdAt || b.created_date || 0).getTime() - new Date(a.createdAt || a.created_date || 0).getTime()).slice(0, MAX_COMMANDS);
@@ -69,11 +67,28 @@ function pickProviderPublic(provider: Record<string, any> | null) {
 function pickPlaylistPublic(playlist: Record<string, any>) {
   return { id: playlist.id, playerId: playlist.playerId || "", providerId: playlist.providerId || playlist.spotifyAccountId || "", zoneId: playlist.zoneId || "", name: playlist.name || "Spotify Playlist", coverUrl: playlist.coverUrl || "", importedTracks: Number(playlist.importedTracks || 0), totalTracks: Number(playlist.totalTracks || 0), providerPlaylistUri: playlist.providerPlaylistUri || playlist.spotifyUri || playlist.uri || "", externalUrl: playlist.externalUrl || "", trackSyncStatus: playlist.trackSyncStatus || "", metadataSyncStatus: playlist.metadataSyncStatus || "" };
 }
-function sanitizeHeartbeat(payload: Record<string, any> = {}) {
-  const updateData: Record<string, any> = { lastSeen: nowIso(), lastHeartbeatAt: nowIso(), isOnline: true, sdkReady: !!payload.sdkReady, sdkConnected: !!payload.sdkConnected, spotifyDeviceId: String(payload.spotifyDeviceId || ""), currentTrackName: String(payload.currentTrackName || ""), currentTrackArtist: String(payload.currentTrackArtist || ""), currentTrackAlbum: String(payload.currentTrackAlbum || ""), currentTrackCoverUrl: String(payload.currentTrackCoverUrl || ""), isPlaying: !!payload.isPlaying, lastError: String(payload.lastError || "") };
+function heartbeatField(payload: Record<string, any>, current: Record<string, any>, name: string, fallback = "") {
+  return payload[name] !== undefined ? String(payload[name] || "") : String(current[name] || fallback || "");
+}
+function sanitizeHeartbeat(payload: Record<string, any> = {}, currentPlayer: Record<string, any> = {}) {
+  const updateData: Record<string, any> = {
+    lastSeen: nowIso(),
+    lastHeartbeatAt: nowIso(),
+    isOnline: true,
+    sdkReady: payload.sdkReady !== undefined ? !!payload.sdkReady : !!currentPlayer.sdkReady,
+    sdkConnected: payload.sdkConnected !== undefined ? !!payload.sdkConnected : !!currentPlayer.sdkConnected,
+    spotifyDeviceId: heartbeatField(payload, currentPlayer, "spotifyDeviceId"),
+    currentTrackName: heartbeatField(payload, currentPlayer, "currentTrackName"),
+    currentTrackArtist: heartbeatField(payload, currentPlayer, "currentTrackArtist"),
+    currentTrackAlbum: heartbeatField(payload, currentPlayer, "currentTrackAlbum"),
+    currentTrackCoverUrl: heartbeatField(payload, currentPlayer, "currentTrackCoverUrl"),
+    isPlaying: payload.isPlaying !== undefined ? !!payload.isPlaying : !!currentPlayer.isPlaying,
+    lastError: payload.lastError !== undefined ? String(payload.lastError || "") : String(currentPlayer.lastError || ""),
+  };
   if (Number.isFinite(Number(payload.volume))) updateData.volume = Number(payload.volume);
+  else if (Number.isFinite(Number(currentPlayer.volume))) updateData.volume = Number(currentPlayer.volume);
   if (Number.isFinite(Number(payload.progressMs))) updateData.progressMs = Number(payload.progressMs);
-  if (Number.isFinite(Number(payload.durationMs))) updateData.durationMs = Number(payload.durationMs);
+  if (Number.isFinite(Number(payload.durationMs))) { updateData.durationMs = Number(payload.durationMs); updateData.currentTrackDuration = Number(payload.durationMs); }
   if (payload.currentTrackUri !== undefined) updateData.currentTrackUri = String(payload.currentTrackUri || "");
   if (payload.currentPlaylistUri !== undefined) updateData.currentPlaylistUri = String(payload.currentPlaylistUri || "");
   if (payload.playbackStateAvailable !== undefined) updateData.playbackStateAvailable = payload.playbackStateAvailable !== false;
@@ -127,10 +142,10 @@ async function handleBootstrap(base44: any, player: Record<string, any>, runtime
   if (contextPlayer.providerId && !player.providerId) { patch.providerId = contextPlayer.providerId; patch.apiCredentialSetId = contextPlayer.providerId; patch.spotifyAccountId = contextPlayer.providerId; }
   if (contextPlayer.zoneId && !player.zoneId) patch.zoneId = contextPlayer.zoneId;
   await base44.asServiceRole.entities.Player.update(player.id, patch).catch(() => {});
-  return { success: true, player: pickPlayerPublic(contextPlayer, runtimeSession), provider: pickProviderPublic(provider), zone: zone ? { id: zone.id, name: zone.name || "", providerId: zone.providerId || "" } : null };
+  return { success: true, player: pickPlayerPublic({ ...contextPlayer, ...patch }, runtimeSession), provider: pickProviderPublic(provider), zone: zone ? { id: zone.id, name: zone.name || "", providerId: zone.providerId || "" } : null };
 }
 async function handleHeartbeat(base44: any, player: Record<string, any>, payload: Record<string, any>) {
-  const updateData = sanitizeHeartbeat(payload);
+  const updateData = sanitizeHeartbeat(payload, player);
   await base44.asServiceRole.entities.Player.update(player.id, updateData);
   return { success: true, playerId: player.id, updatedAt: updateData.lastHeartbeatAt };
 }
