@@ -12,6 +12,36 @@ function readStoredPlayer() {
   }
 }
 
+function installPublicPlayerStubs({ providerId, zoneId }) {
+  if (providerId && !base44.entities.Provider.__sssPublicPlayerStub) {
+    const originalProviderGet = base44.entities.Provider.get.bind(base44.entities.Provider);
+    base44.entities.Provider.get = async (id) => {
+      if (id === providerId) {
+        return {
+          id,
+          name: 'Zugewiesener Spotify Provider',
+          displayName: 'Zugewiesener Spotify Provider',
+          providerType: 'spotify',
+          status: 'connected',
+          authStatus: 'connected',
+          publicPlayerStub: true,
+        };
+      }
+      return originalProviderGet(id);
+    };
+    base44.entities.Provider.__sssPublicPlayerStub = true;
+  }
+
+  if (zoneId && !base44.entities.Zone.__sssPublicPlayerStub) {
+    const originalZoneGet = base44.entities.Zone.get.bind(base44.entities.Zone);
+    base44.entities.Zone.get = async (id) => {
+      if (id === zoneId) return { id, name: 'Zugewiesene Zone', publicPlayerStub: true };
+      return originalZoneGet(id);
+    };
+    base44.entities.Zone.__sssPublicPlayerStub = true;
+  }
+}
+
 export default function PlayerNewBootstrap() {
   const [ready, setReady] = useState(false);
   const [bootKey, setBootKey] = useState(0);
@@ -21,21 +51,28 @@ export default function PlayerNewBootstrap() {
 
     async function bootstrap() {
       const params = new URLSearchParams(window.location.search);
-      const playerId = params.get('playerId') || readStoredPlayer()?.id;
+      const stored = readStoredPlayer();
+      const playerId = params.get('playerId') || stored?.id || '';
       const explicitProviderId = params.get('providerId') || '';
       const explicitZoneId = params.get('zoneId') || '';
-      const stored = readStoredPlayer();
+      const providerId = explicitProviderId || getPlayerProviderId(stored || {}, {});
+      const zoneId = explicitZoneId || stored?.zoneId || '';
+
+      installPublicPlayerStubs({ providerId, zoneId });
 
       if (stored?.id || playerId) {
         const merged = {
           ...(stored || {}),
           ...(playerId ? { id: playerId } : {}),
-          ...(explicitProviderId ? {
-            providerId: explicitProviderId,
-            apiCredentialSetId: explicitProviderId,
-            spotifyAccountId: explicitProviderId,
+          ...(params.get('name') ? { name: params.get('name') } : {}),
+          ...(params.get('email') ? { email: params.get('email') } : {}),
+          ...(params.get('password') ? { passwordHash: params.get('password') } : {}),
+          ...(providerId ? {
+            providerId,
+            apiCredentialSetId: providerId,
+            spotifyAccountId: providerId,
           } : {}),
-          ...(explicitZoneId ? { zoneId: explicitZoneId } : {}),
+          ...(zoneId ? { zoneId } : {}),
           role: 'player',
           isActive: true,
         };
@@ -45,22 +82,14 @@ export default function PlayerNewBootstrap() {
         }
       }
 
-      if (playerId && explicitProviderId) {
-        try {
-          const serverPlayer = await base44.entities.Player.get(playerId);
-          const serverProviderId = getPlayerProviderId(serverPlayer || {}, {});
-          if (serverProviderId !== explicitProviderId || !serverPlayer?.providerId || !serverPlayer?.apiCredentialSetId || !serverPlayer?.spotifyAccountId) {
-            await base44.entities.Player.update(playerId, {
-              ...buildPlayerProviderPatch(explicitProviderId),
-              ...(explicitZoneId ? { zoneId: explicitZoneId } : {}),
-              isActive: true,
-              role: 'player',
-              updatedAt: new Date().toISOString(),
-            });
-          }
-        } catch (error) {
-          console.warn('Could not repair player assignment during bootstrap. The local QR/session payload will still be used.', error);
-        }
+      if (playerId && providerId) {
+        base44.entities.Player.update(playerId, {
+          ...buildPlayerProviderPatch(providerId),
+          ...(zoneId ? { zoneId } : {}),
+          isActive: true,
+          role: 'player',
+          updatedAt: new Date().toISOString(),
+        }).catch((error) => console.warn('Public player bootstrap could not repair server assignment.', error));
       }
 
       if (!cancelled) {
