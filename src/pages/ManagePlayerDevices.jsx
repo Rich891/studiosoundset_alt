@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Copy, Trash2, Eye, EyeOff, Music2, AlertCircle, Wifi, WifiOff } from 'lucide-react';
+import { Plus, Copy, Trash2, Eye, EyeOff, Music2, AlertCircle, Wifi, WifiOff, QrCode } from 'lucide-react';
 import { toast } from 'sonner';
 import PlayerQRModal from '@/components/player/PlayerQRModal';
 import { motion } from 'framer-motion';
@@ -19,7 +19,7 @@ export default function ManagePlayerDevices() {
   const [showDialog, setShowDialog] = useState(false);
   const [showPassword, setShowPassword] = useState({});
   const [qrModalOpen, setQrModalOpen] = useState(false);
-  const [qrData, setQrData] = useState({ email: '', password: '', deviceName: '' });
+  const [qrData, setQrData] = useState({ playerId: '', providerId: '', zoneId: '', email: '', password: '', deviceName: '' });
   const [formData, setFormData] = useState({ name: '', providerId: '', zoneId: '', passwordHash: '' });
 
   const { data: players = [], error: playerError } = useQuery({ queryKey: ['players'], queryFn: () => base44.entities.Player.list('-updated_date'), refetchInterval: 3000 });
@@ -35,7 +35,14 @@ export default function ManagePlayerDevices() {
     onSuccess: (player) => {
       queryClient.invalidateQueries({ queryKey: ['players'] });
       toast.success('Player erstellt. Öffne den QR-Code auf dem Player-Gerät.');
-      setQrData({ email: player.email, password: formData.passwordHash, deviceName: player.name });
+      setQrData({
+        playerId: player.id,
+        providerId: player.providerId || formData.providerId,
+        zoneId: player.zoneId || formData.zoneId || '',
+        email: player.email,
+        password: formData.passwordHash,
+        deviceName: player.name,
+      });
       setQrModalOpen(true);
       setShowDialog(false);
       setFormData({ name: '', providerId: '', zoneId: '', passwordHash: '' });
@@ -62,6 +69,18 @@ export default function ManagePlayerDevices() {
     setFormData({ ...formData, passwordHash: pwd });
   };
 
+  const openQr = (player) => {
+    setQrData({
+      playerId: player.id,
+      providerId: player.providerId || '',
+      zoneId: player.zoneId || '',
+      email: player.email,
+      password: player.passwordHash,
+      deviceName: player.name,
+    });
+    setQrModalOpen(true);
+  };
+
   const getProviderName = (id) => providers.find(a => a.id === id)?.name || providers.find(a => a.id === id)?.displayName || '—';
   const getZoneName = (id) => zones.find(z => z.id === id)?.name || '—';
   const connectedProviders = providers.filter(p => providerStatus(p) === 'connected');
@@ -85,18 +104,18 @@ export default function ManagePlayerDevices() {
           return (
             <motion.div key={player.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.04 }}>
               <div className="bento-panel p-5 space-y-4">
-                <div className="flex items-start justify-between gap-3"><div><h3 className="text-xl font-black">{player.name}</h3><div className="flex items-center gap-2 mt-1">{online ? <Wifi className="w-3.5 h-3.5 text-green-400" /> : <WifiOff className="w-3.5 h-3.5 text-yellow-400" />}<span className={`text-xs font-semibold ${online ? 'text-green-400' : 'text-yellow-400'}`}>{online ? 'Online' : 'Offline'}</span>{player.sdkReady && <span className="text-xs text-cyan-400">SDK Ready</span>}</div></div><Button variant="ghost" size="sm" onClick={() => deleteMutation.mutate(player.id)} className="text-red-400 hover:text-red-300 h-8 w-8 p-0" disabled={deleteMutation.isPending}><Trash2 className="w-4 h-4" /></Button></div>
+                <div className="flex items-start justify-between gap-3"><div><h3 className="text-xl font-black">{player.name}</h3><div className="flex items-center gap-2 mt-1">{online ? <Wifi className="w-3.5 h-3.5 text-green-400" /> : <WifiOff className="w-3.5 h-3.5 text-yellow-400" />}<span className={`text-xs font-semibold ${online ? 'text-green-400' : 'text-yellow-400'}`}>{online ? 'Online' : 'Offline'}</span>{player.sdkReady && <span className="text-xs text-cyan-400">SDK Ready</span>}</div></div><div className="flex items-center gap-1"><Button variant="ghost" size="sm" onClick={() => openQr(player)} className="h-8 w-8 p-0" title="QR anzeigen"><QrCode className="w-4 h-4" /></Button><Button variant="ghost" size="sm" onClick={() => deleteMutation.mutate(player.id)} className="text-red-400 hover:text-red-300 h-8 w-8 p-0" disabled={deleteMutation.isPending}><Trash2 className="w-4 h-4" /></Button></div></div>
                 <div className="grid md:grid-cols-4 gap-3 text-sm"><div className="bg-muted/20 rounded-lg p-3"><p className="text-xs text-muted-foreground font-semibold mb-1">Spotify Provider</p><p className="font-bold text-sm">{getProviderName(player.providerId)}</p>{account && <p className={`text-xs mt-1 ${providerStatus(account) === 'connected' ? 'text-green-400' : 'text-yellow-400'}`}>{providerStatus(account)}</p>}</div><div className="bg-muted/20 rounded-lg p-3"><p className="text-xs text-muted-foreground font-semibold mb-1">Zone</p><p className="font-bold text-sm">{getZoneName(player.zoneId)}</p></div><div className="bg-muted/20 rounded-lg p-3"><p className="text-xs text-muted-foreground font-semibold mb-1">Device ID</p><p className="font-mono text-xs break-all">{player.spotifyDeviceId || '—'}</p></div><div className="bg-muted/20 rounded-lg p-3"><p className="text-xs text-muted-foreground font-semibold mb-1">Last Command</p><p className="text-xs break-all">{player.lastCommand || '—'} {player.lastCommandStatus ? `· ${player.lastCommandStatus}` : ''}</p></div></div>
                 <div className="bg-background/50 rounded-lg p-3 space-y-2 border border-border/30"><p className="text-xs text-muted-foreground font-semibold">Login-Daten</p><div className="flex items-center gap-2 font-mono text-xs"><code className="flex-1 bg-background px-2 py-1.5 rounded border border-border/30 truncate">{player.email}</code><Button variant="ghost" size="sm" onClick={() => copyToClipboard(player.email)} className="h-7 w-7 p-0"><Copy className="w-3 h-3" /></Button></div><div className="flex items-center gap-2 font-mono text-xs"><code className="flex-1 bg-background px-2 py-1.5 rounded border border-border/30 truncate">{showPassword[player.id] ? player.passwordHash : '••••••••'}</code><Button variant="ghost" size="sm" onClick={() => setShowPassword(prev => ({ ...prev, [player.id]: !prev[player.id] }))} className="h-7 w-7 p-0">{showPassword[player.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}</Button><Button variant="ghost" size="sm" onClick={() => copyToClipboard(player.passwordHash)} className="h-7 w-7 p-0"><Copy className="w-3 h-3" /></Button></div></div>
                 {player.lastError && <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-300">{player.lastError}</div>}
-                <div className="rounded-lg border border-border/40 bg-background/40 p-3 text-xs text-muted-foreground">Systemtests werden nicht simuliert. Nutze <a href="/now-playing" className="text-primary underline">Now Playing</a> oder <a href="/commands" className="text-primary underline">Commands</a>, um echte PlayerCommands zu senden und bestätigte Ergebnisse zu sehen.</div>
+                <div className="rounded-lg border border-border/40 bg-background/40 p-3 text-xs text-muted-foreground">Wenn Player-Login manuell wegen Base44 Auth blockiert wird, nutze den QR-Link. Er enthält die Player-ID und kann die Player-Session lokal herstellen.</div>
               </div>
             </motion.div>
           );
         })}
       </div>
 
-      <PlayerQRModal open={qrModalOpen} onOpenChange={setQrModalOpen} email={qrData.email} password={qrData.password} deviceName={qrData.deviceName} />
+      <PlayerQRModal open={qrModalOpen} onOpenChange={setQrModalOpen} playerId={qrData.playerId} providerId={qrData.providerId} zoneId={qrData.zoneId} email={qrData.email} password={qrData.password} deviceName={qrData.deviceName} />
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="max-w-md"><DialogHeader><DialogTitle>Neuer Player</DialogTitle></DialogHeader><div className="space-y-4"><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Gerätename</label><Input placeholder="z.B. Gym Player" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} /></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Spotify Provider</label><Select value={formData.providerId} onValueChange={(value) => setFormData({ ...formData, providerId: value })}><SelectTrigger><SelectValue placeholder="Provider wählen" /></SelectTrigger><SelectContent>{providers.length === 0 ? <SelectItem disabled value="none">Keine Provider konfiguriert</SelectItem> : providers.map((acc) => <SelectItem key={acc.id} value={acc.id}>{acc.name || acc.displayName} {providerStatus(acc) === 'connected' ? '✓' : '(nicht verbunden)'}</SelectItem>)}</SelectContent></Select></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Zone optional</label><Select value={formData.zoneId || 'none'} onValueChange={(value) => setFormData({ ...formData, zoneId: value })}><SelectTrigger><SelectValue placeholder="Zone wählen" /></SelectTrigger><SelectContent><SelectItem value="none">Keine</SelectItem>{zones.map((zone) => <SelectItem key={zone.id} value={zone.id}>{zone.name}</SelectItem>)}</SelectContent></Select></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Passwort</label><div className="flex gap-2"><Input type="text" placeholder="z.B. ABC12345" value={formData.passwordHash} onChange={(e) => setFormData({ ...formData, passwordHash: e.target.value })} /><Button type="button" variant="outline" onClick={generatePassword} className="whitespace-nowrap">Generieren</Button></div></div><div className="flex gap-2 pt-4"><Button variant="outline" onClick={() => setShowDialog(false)} className="flex-1">Abbrechen</Button><Button onClick={handleCreate} disabled={createMutation.isPending} className="flex-1">{createMutation.isPending ? 'Erstelle...' : 'Erstellen'}</Button></div></div></DialogContent>
