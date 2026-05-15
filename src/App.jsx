@@ -28,13 +28,27 @@ import AddPlayerDevice from './pages/AddPlayerDevice';
 import PlayerPairing from './pages/PlayerPairing';
 import ManagePlayerDevices from './pages/ManagePlayerDevices';
 
-const PUBLIC_PATHS = new Set(['/', '/spotify-callback', '/player-pairing', '/player-new', '/player-login']);
+const PUBLIC_PREFIXES = ['/', '/spotify-callback', '/player-pairing', '/player-new', '/player-login'];
+
+function normalizePath(pathname = '/') {
+  if (!pathname) return '/';
+  if (pathname.length > 1 && pathname.endsWith('/')) return pathname.slice(0, -1);
+  return pathname;
+}
+
+function isPublicPath(pathname = '/') {
+  const path = normalizePath(pathname);
+  return PUBLIC_PREFIXES.some((publicPath) => {
+    if (publicPath === '/') return path === '/';
+    return path === publicPath || path.startsWith(`${publicPath}/`);
+  });
+}
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, isAuthenticated } = useAuth();
   const location = useLocation();
 
-  if (PUBLIC_PATHS.has(location.pathname)) {
+  if (isPublicPath(location.pathname)) {
     return (
       <Routes>
         <Route path="/" element={<PublicLogin />} />
