@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
-import { base44 } from '@/api/base44Client';
 import PlayerRuntime from './PlayerRuntime';
 import { RefreshCw } from 'lucide-react';
-import { buildPlayerProviderPatch, getPlayerProviderId } from '@/lib/playerAssignments';
+import { getPlayerProviderId } from '@/lib/playerAssignments';
 
 function readStoredPlayer() {
   try { return JSON.parse(localStorage.getItem('player')) || null; }
@@ -12,36 +11,18 @@ function readStoredPlayer() {
 export default function PlayerNewBootstrap() {
   const [ready, setReady] = useState(false);
   const [bootKey, setBootKey] = useState(0);
-  const [oauthCode, setOauthCode] = useState(null);
-  const [oauthRedirectUri, setOauthRedirectUri] = useState('');
 
   useEffect(() => {
     let cancelled = false;
 
     async function bootstrap() {
       const params = new URLSearchParams(window.location.search);
-
-      // Check if this is a Spotify OAuth callback
-      const code = params.get('code');
-      const state = params.get('state');
-
-      if (code && state && state.startsWith('player_')) {
-        // Coming back from Spotify OAuth — just pass code to PlayerRuntime
-        const redirectUri = `${window.location.origin}/player-new`;
-        if (!cancelled) {
-          setOauthCode(code);
-          setOauthRedirectUri(redirectUri);
-          setReady(true);
-        }
-        return;
-      }
-
-      // Normal boot: read and merge player params from URL
       const stored = readStoredPlayer();
       const playerId = params.get('playerId') || stored?.id || '';
       const providerId = params.get('providerId') || getPlayerProviderId(stored || {});
       const zoneId = params.get('zoneId') || stored?.zoneId || '';
       const spotifyClientId = params.get('cid') || stored?.spotifyClientId || stored?.clientId || '';
+      const sessionToken = params.get('sessionToken') || params.get('setupToken') || params.get('token') || stored?.sessionToken || stored?.setupToken || '';
 
       if (playerId || stored?.id) {
         const merged = {
@@ -52,25 +33,12 @@ export default function PlayerNewBootstrap() {
           ...(providerId ? { providerId, apiCredentialSetId: providerId, spotifyAccountId: providerId } : {}),
           ...(zoneId ? { zoneId } : {}),
           ...(spotifyClientId ? { spotifyClientId, clientId: spotifyClientId } : {}),
+          ...(sessionToken ? { sessionToken, setupToken: stored?.setupToken || sessionToken } : {}),
           role: 'player',
           isActive: true,
         };
         localStorage.setItem('player', JSON.stringify(merged));
-        if (!localStorage.getItem('playerSessionToken')) {
-          localStorage.setItem('playerSessionToken', `qr_${merged.id}_${Date.now()}`);
-        }
-      }
-
-      // Best-effort: update player entity (no auth needed fails silently)
-      if (playerId && providerId) {
-        base44.entities.Player.update(playerId, {
-          ...buildPlayerProviderPatch(providerId),
-          ...(zoneId ? { zoneId } : {}),
-          ...(spotifyClientId ? { spotifyClientId } : {}),
-          isActive: true,
-          role: 'player',
-          updatedAt: new Date().toISOString(),
-        }).catch(() => {});
+        if (sessionToken) localStorage.setItem('playerSessionToken', sessionToken);
       }
 
       if (!cancelled) {
@@ -94,11 +62,5 @@ export default function PlayerNewBootstrap() {
     );
   }
 
-  return (
-    <PlayerRuntime
-      key={bootKey}
-      exchangeCode={oauthCode}
-      exchangeRedirectUri={oauthRedirectUri}
-    />
-  );
+  return <PlayerRuntime key={bootKey} />;
 }
