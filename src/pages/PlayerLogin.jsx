@@ -5,9 +5,33 @@ import { Input } from '@/components/ui/input';
 import { AlertCircle, Loader, Wifi } from 'lucide-react';
 import { toast } from 'sonner';
 
+function buildPlayerFromQuery(params) {
+  const id = params.get('playerId');
+  const email = params.get('email');
+  const passwordHash = params.get('password');
+  const name = params.get('name') || 'StudioSoundSet Player';
+  const providerId = params.get('providerId') || '';
+  const zoneId = params.get('zoneId') || '';
+  if (!id || !email || !passwordHash) return null;
+  return {
+    id,
+    name,
+    email,
+    passwordHash,
+    providerId,
+    zoneId,
+    role: 'player',
+    isActive: true,
+    isOnline: true,
+    lastSeen: new Date().toISOString(),
+    lastHeartbeatAt: new Date().toISOString(),
+  };
+}
+
 export default function PlayerLogin({ onLoginSuccess }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [qrPlayer, setQrPlayer] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [backendReachable, setBackendReachable] = useState(null);
@@ -16,13 +40,22 @@ export default function PlayerLogin({ onLoginSuccess }) {
     const params = new URLSearchParams(window.location.search);
     const queryEmail = params.get('email');
     const queryPassword = params.get('password');
+    const playerFromQuery = buildPlayerFromQuery(params);
     if (queryEmail) setEmail(queryEmail);
     if (queryPassword) setPassword(queryPassword);
+    if (playerFromQuery) setQrPlayer(playerFromQuery);
 
     fetch(window.location.origin, { method: 'HEAD', cache: 'no-store' })
       .then(() => setBackendReachable(true))
       .catch(() => setBackendReachable(false));
   }, []);
+
+  const completeLogin = (player, sessionToken) => {
+    localStorage.setItem('playerSessionToken', sessionToken || `qr_${player.id}_${Date.now()}`);
+    localStorage.setItem('player', JSON.stringify(player));
+    toast.success('Angemeldet!');
+    onLoginSuccess();
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -34,19 +67,26 @@ export default function PlayerLogin({ onLoginSuccess }) {
     setLoading(true);
     setError('');
 
+    if (qrPlayer && qrPlayer.email === email && qrPlayer.passwordHash === password) {
+      completeLogin(qrPlayer, `qr_${qrPlayer.id}_${Date.now()}`);
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await base44.functions.invoke('playerAuthLogin', { email, password });
 
       if (response.data?.success && response.data?.sessionToken) {
-        localStorage.setItem('playerSessionToken', response.data.sessionToken);
-        localStorage.setItem('player', JSON.stringify(response.data.player));
-        toast.success('Angemeldet!');
-        onLoginSuccess();
+        completeLogin(response.data.player, response.data.sessionToken);
       } else {
         setError(response.data?.error || 'Login fehlgeschlagen');
       }
     } catch (e) {
-      setError('Fehler: ' + e.message);
+      const needsQr = /must be logged in|auth|required|403|401/i.test(e.message || '');
+      setError(needsQr
+        ? 'Base44 blockiert öffentlichen Entity-Zugriff. Bitte nutze den QR-Code bzw. Player-Link aus “Player verwalten”, nicht nur Email/Passwort manuell.'
+        : 'Fehler: ' + e.message
+      );
     } finally {
       setLoading(false);
     }
@@ -64,6 +104,7 @@ export default function PlayerLogin({ onLoginSuccess }) {
           <div className="rounded-lg border border-border/40 bg-background/40 p-3 text-xs space-y-1">
             <p className="flex items-center gap-2"><Wifi className="w-3.5 h-3.5" /> Current Origin: <span className="font-mono break-all">{window.location.origin}</span></p>
             <p>App erreichbar: <span className={backendReachable === false ? 'text-red-400' : 'text-green-400'}>{backendReachable === null ? 'prüfe...' : backendReachable ? 'ja' : 'nein'}</span></p>
+            <p>QR Player-ID: <span className={qrPlayer ? 'text-green-400' : 'text-yellow-300'}>{qrPlayer?.id || 'nicht im Link'}</span></p>
             <p className="text-muted-foreground">Admin und Player bitte auf getrennten Geräten/Browserprofilen testen.</p>
           </div>
 
@@ -84,7 +125,7 @@ export default function PlayerLogin({ onLoginSuccess }) {
             </Button>
           </form>
 
-          <p className="text-xs text-muted-foreground text-center">Verwende die Login-Daten vom Admin oder scanne den Player-QR-Code.</p>
+          <p className="text-xs text-muted-foreground text-center">Bei Base44 Auth-Sperre funktioniert der Login nur über den QR-/Player-Link mit Player-ID.</p>
         </div>
       </div>
     </div>
