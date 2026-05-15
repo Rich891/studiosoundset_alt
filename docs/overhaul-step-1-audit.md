@@ -88,17 +88,22 @@ Heartbeat sanitization now preserves current valid state when a heartbeat omits 
 
 ### 5. Playlist provider inferred through Zones
 
-Status: open for immediate cleanup.
+Status: fixed in source.
 
 Problem:
-Playlist UI still fetches Zones and may infer provider through `zone.providerId`. The app direction is player-centered, so this can select the wrong provider/API account and cause playlist import failures.
+Playlist UI fetched Zones and inferred provider through `zone.providerId`. The app direction is player-centered, so this could select the wrong provider/API account and cause playlist import failures.
 
-Required cleanup:
-Playlist provider resolution must use only Player provider fields:
+Fix:
+`src/pages/Playlists.jsx` no longer calls `base44.entities.Zone.list()` and no longer uses `zone.providerId` as a Spotify/API fallback.
+
+Playlist provider resolution now uses only Player/Playlist provider fields:
 
 - `player.providerId`
 - `player.apiCredentialSetId`
 - `player.spotifyAccountId`
+- `playlist.providerId`
+- `playlist.spotifyAccountId`
+- `playlist.apiCredentialSetId`
 
 Zones must not decide Spotify/API provider.
 
@@ -111,7 +116,6 @@ Potential causes:
 - missing Spotify scopes
 - provider token created before playlist scopes were added
 - Spotify dev mode user not allowed
-- wrong provider selected through zone fallback
 - `spotifyAccountControl` admin auth mismatch
 
 Required later fix:
@@ -135,7 +139,6 @@ Still present:
 
 - `/zones` route/page
 - Sidebar footer text mentioning zones
-- Playlist labels mentioning zones
 - Some admin pages still read `Zone`
 
 These are not all runtime-breaking, but they conflict with the final product model. They will be removed in Step 2.
@@ -173,7 +176,7 @@ There must be no direct public fallback to `base44.entities.Player.update`. That
 - Public Player must not directly write Base44 Player state.
 - Runtime provider must resolve from server-side runtime session if Player fields are missing.
 - Now Playing must not show impossible SDK/device state when playback state exists.
-- Playlist provider inference through Zone is identified and queued or patched.
+- Playlist provider inference through Zone must be patched.
 - Published app must expose `publicPlayerRuntime`; otherwise Step 1 is not live-successful.
 
 ## Live Verification Status
