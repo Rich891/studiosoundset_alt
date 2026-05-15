@@ -36,37 +36,38 @@ export function formatMs(ms) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+async function playerCommandControl(action, payload = {}) {
+  const response = await base44.functions.invoke('playerCommandControl', { action, payload });
+  if (!response.data?.success) {
+    const error = new Error(response.data?.error || `playerCommandControl ${action} failed.`);
+    error.errorCode = response.data?.errorCode || 'PLAYER_COMMAND_CONTROL_FAILED';
+    throw error;
+  }
+  return response.data;
+}
+
+export async function listPlayerCommands(playerId = '') {
+  const result = await playerCommandControl('list', playerId ? { playerId } : {});
+  return result.commands || [];
+}
+
 export async function createPlayerCommand(player, type, payload = {}) {
   if (!player?.id) throw new Error('PLAYER_MISSING');
-  const createdAt = nowIso();
-  return base44.entities.PlayerCommand.create({
+  const result = await playerCommandControl('create', {
     playerId: player.id,
-    providerId: player.providerId || player.spotifyAccountId || '',
+    providerId: player.providerId || player.spotifyAccountId || player.apiCredentialSetId || '',
     zoneId: player.zoneId || '',
     type,
     command: type,
     payload,
-    status: COMMAND_STATUS.PENDING,
-    createdAt,
     humanMessage: 'Command sent. Waiting for Player acknowledgement.',
   });
+  return result.command;
 }
 
 export async function markStalePendingCommands(playerId) {
   try {
-    const pending = await base44.entities.PlayerCommand.filter({ playerId, status: COMMAND_STATUS.PENDING });
-    const cutoff = Date.now() - PLAYER_STALE_AFTER_MS;
-    await Promise.all(
-      pending
-        .filter((cmd) => new Date(cmd.createdAt || cmd.created_date || 0).getTime() < cutoff)
-        .map((cmd) => base44.entities.PlayerCommand.update(cmd.id, {
-          status: COMMAND_STATUS.TIMEOUT,
-          completedAt: nowIso(),
-          errorCode: 'COMMAND_TIMEOUT',
-          humanMessage: 'The Player did not pick up this command in time. Open the Player screen and wait until it is online.',
-          technicalMessage: 'No PlayerCommand pickup before timeout window.',
-        }))
-    );
+    await playerCommandControl('markTimeouts', { playerId, timeoutMs: PLAYER_STALE_AFTER_MS });
   } catch (error) {
     console.warn('Could not mark stale commands:', error);
   }
@@ -74,7 +75,7 @@ export async function markStalePendingCommands(playerId) {
 
 export async function getLastCommandForPlayer(playerId) {
   try {
-    const commands = await base44.entities.PlayerCommand.filter({ playerId });
+    const commands = await listPlayerCommands(playerId);
     return [...commands].sort((a, b) => new Date(b.createdAt || b.created_date || 0) - new Date(a.createdAt || a.created_date || 0))[0] || null;
   } catch (error) {
     return null;
