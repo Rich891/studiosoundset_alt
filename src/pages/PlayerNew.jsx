@@ -30,6 +30,40 @@ function getStoredPlayer() {
   }
 }
 
+function mergePlayerFromUrl(storedPlayer) {
+  const params = new URLSearchParams(window.location.search);
+  const playerId = params.get('playerId');
+  if (!playerId && !storedPlayer) return null;
+
+  const merged = {
+    ...(storedPlayer || {}),
+    ...(playerId ? { id: playerId } : {}),
+  };
+
+  const mappings = {
+    name: 'name',
+    email: 'email',
+    password: 'passwordHash',
+    providerId: 'providerId',
+    zoneId: 'zoneId',
+  };
+
+  Object.entries(mappings).forEach(([param, field]) => {
+    const value = params.get(param);
+    if (value !== null && value !== '') merged[field] = value;
+  });
+
+  if (!merged.name) merged.name = 'StudioSoundSet Player';
+  if (!merged.role) merged.role = 'player';
+  if (merged.id && merged.email) {
+    localStorage.setItem('player', JSON.stringify(merged));
+    if (!localStorage.getItem('playerSessionToken')) {
+      localStorage.setItem('playerSessionToken', `qr_${merged.id}_${Date.now()}`);
+    }
+  }
+  return merged.id ? merged : storedPlayer;
+}
+
 export default function PlayerNew() {
   const [player, setPlayer] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -53,23 +87,26 @@ export default function PlayerNew() {
   useEffect(() => {
     const sessionToken = localStorage.getItem('playerSessionToken');
     const storedPlayer = getStoredPlayer();
-    if (sessionToken && storedPlayer) setPlayer(storedPlayer);
+    const mergedPlayer = mergePlayerFromUrl(storedPlayer);
+    if ((sessionToken && mergedPlayer) || mergedPlayer?.id) setPlayer(mergedPlayer);
     setLoading(false);
   }, []);
 
-  const { data: zone } = useQuery({
+  const { data: zone, error: zoneError } = useQuery({
     queryKey: ['zone', player?.zoneId],
     queryFn: () => player?.zoneId ? base44.entities.Zone.get(player.zoneId) : null,
     enabled: !!player?.zoneId,
+    retry: false,
   });
 
-  const { data: provider } = useQuery({
+  const { data: provider, error: providerError } = useQuery({
     queryKey: ['provider', player?.providerId || zone?.providerId],
     queryFn: () => {
       const providerId = player?.providerId || zone?.providerId;
       return providerId ? base44.entities.Provider.get(providerId) : null;
     },
     enabled: !!(player?.providerId || zone?.providerId),
+    retry: false,
   });
 
   const { data: playlists = [] } = useQuery({
@@ -80,6 +117,7 @@ export default function PlayerNew() {
       return all.filter((pl) => !pl.playerId || pl.playerId === player?.id || pl.providerId === provider.id);
     },
     enabled: !!provider?.id,
+    retry: false,
     refetchInterval: 10000,
   });
 
@@ -97,6 +135,11 @@ export default function PlayerNew() {
     setHeartbeatOk(true);
     return result;
   }, [player, deviceId, playerReady, sdkConnected]);
+
+  useEffect(() => {
+    if (providerError) setError('Provider konnte nicht geladen werden. Prüfe, ob dieser Player einem Provider zugewiesen ist und ob Base44 Public Entity Zugriff erlaubt. Details: ' + providerError.message);
+    else if (zoneError) setError('Zone konnte nicht geladen werden: ' + zoneError.message);
+  }, [providerError, zoneError]);
 
   useEffect(() => {
     if (window.Spotify) {
@@ -421,7 +464,7 @@ export default function PlayerNew() {
   }
 
   if (!player) {
-    return <PlayerLogin onLoginSuccess={() => setPlayer(getStoredPlayer())} />;
+    return <PlayerLogin onLoginSuccess={() => setPlayer(mergePlayerFromUrl(getStoredPlayer()))} />;
   }
 
   const track = playerState?.track_window?.current_track;
@@ -460,6 +503,13 @@ export default function PlayerNew() {
             <span className="text-muted-foreground">Heartbeat {heartbeatOk ? 'OK' : 'wartet'}</span>
           </div>
         </div>
+
+        {(!player.providerId && !zone?.providerId) && (
+          <div className="bento-panel border-yellow-500/20 bg-yellow-500/5 p-3 flex gap-2">
+            <AlertCircle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-yellow-200">Dieser Player hat keinen Provider zugewiesen. Im Admin unter Player verwalten einen Spotify Provider auswählen und danach den neuen QR-Link öffnen.</p>
+          </div>
+        )}
 
         {error && (
           <div className="bento-panel border-red-500/20 bg-red-500/5 p-3 flex gap-2">
