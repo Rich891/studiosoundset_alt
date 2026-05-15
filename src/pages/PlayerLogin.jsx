@@ -19,7 +19,7 @@ export default function PlayerLogin({ onLoginSuccess }) {
     if (queryEmail) setEmail(queryEmail);
     if (queryPassword) setPassword(queryPassword);
 
-    base44.functions.invoke('playerAuthLogin', { ping: true })
+    fetch(window.location.origin, { method: 'HEAD', cache: 'no-store' })
       .then(() => setBackendReachable(true))
       .catch(() => setBackendReachable(false));
   }, []);
@@ -63,7 +63,7 @@ export default function PlayerLogin({ onLoginSuccess }) {
 
           <div className="rounded-lg border border-border/40 bg-background/40 p-3 text-xs space-y-1">
             <p className="flex items-center gap-2"><Wifi className="w-3.5 h-3.5" /> Current Origin: <span className="font-mono break-all">{window.location.origin}</span></p>
-            <p>Backend erreichbar: <span className={backendReachable === false ? 'text-red-400' : 'text-green-400'}>{backendReachable === null ? 'prüfe...' : backendReachable ? 'ja' : 'nein'}</span></p>
+            <p>App erreichbar: <span className={backendReachable === false ? 'text-red-400' : 'text-green-400'}>{backendReachable === null ? 'prüfe...' : backendReachable ? 'ja' : 'nein'}</span></p>
             <p className="text-muted-foreground">Admin und Player bitte auf getrennten Geräten/Browserprofilen testen.</p>
           </div>
 
