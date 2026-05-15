@@ -15,8 +15,8 @@ import {
   COMMAND_STATUS,
   createPlayerCommand,
   formatMs,
-  getLastCommandForPlayer,
   isPlayerOnline,
+  listPlayerCommands,
   markStalePendingCommands,
 } from '@/lib/studioSoundSetRuntime';
 
@@ -195,7 +195,7 @@ export default function NowPlaying() {
   const { data: zones = [] } = useQuery({ queryKey: ['zones'], queryFn: () => base44.entities.Zone.list() });
   const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: () => base44.entities.Provider.list() });
   const { data: playlists = [] } = useQuery({ queryKey: ['playlists'], queryFn: () => base44.entities.Playlist.list() });
-  const { data: commands = [] } = useQuery({ queryKey: ['playerCommands'], queryFn: () => base44.entities.PlayerCommand.list('-createdAt'), refetchInterval: 3000 });
+  const { data: commands = [] } = useQuery({ queryKey: ['playerCommands'], queryFn: () => listPlayerCommands(), refetchInterval: 3000 });
 
   useEffect(() => {
     players.forEach((player) => markStalePendingCommands(player.id));
@@ -234,8 +234,9 @@ export default function NowPlaying() {
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
           {players.map((player, i) => {
             const zone = zones.find(z => z.id === player.zoneId);
-            const provider = providers.find(p => p.id === (player.providerId || zone?.providerId));
-            const playerPlaylists = playlists.filter(p => p.providerId === provider?.id || p.playerId === player.id);
+            const provider = providers.find(p => p.id === (player.providerId || player.apiCredentialSetId || player.spotifyAccountId || zone?.providerId));
+            const providerId = provider?.id || player.providerId || player.apiCredentialSetId || player.spotifyAccountId || '';
+            const playerPlaylists = playlists.filter(p => p.providerId === providerId || p.spotifyAccountId === providerId || p.playerId === player.id);
             return (
               <motion.div key={player.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}>
                 {provider ? <PlayerCard player={player} provider={provider} playlists={playerPlaylists} commands={commands} /> : <div className="bento-panel p-5 text-center"><AlertCircle className="w-8 h-8 text-yellow-400 mx-auto mb-2" /><p className="text-sm font-bold">{player.name}</p><p className="text-xs text-muted-foreground mt-1">Zone oder Provider nicht gefunden</p></div>}
