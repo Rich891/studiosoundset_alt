@@ -4,16 +4,36 @@ This repository keeps the original Base44 app and ports the newer StudioSoundSet
 
 ## Current Runtime Rules
 
-- The Base44 app remains the deployed HTTPS app.
+- The Base44 app is the public HTTPS runtime.
+- The local Next.js/Prisma app remains preserved and is not overwritten.
 - Spotify OAuth redirect URI is generated from the current public origin:
   - `https://<base44-domain>/spotify-callback`
 - Admin and Player should be tested in different browser profiles or separate devices.
 - Same browser profile can replace the session because cookies/local sessions are shared.
 
+## Cleanup Decisions
+
+The previous Base44 code mixed several incompatible concepts (`SpotifyAccount`, `Provider`, `PlayerDevice`, `Player`, `Command`) and contained dummy success paths. The app is now normalized around these concepts:
+
+- `Provider` is the Spotify account/credential record.
+- `Player` is the StudioSoundSet playback device/login/state record.
+- `Zone` groups Players and references a Provider.
+- `Playlist` and `PlaylistTrack` are the catalog.
+- `PlayerCommand` is the only safe Admin-to-Player control channel.
+
+Removed/disabled behavior:
+
+- Fake system test success in Player management.
+- Legacy `/player` implementation based on old `SpotifyAccount`; it now redirects to `/player-new`.
+- Scheduler save UI that implied automation existed. Calendar now clearly says scheduler is not active until a real worker exists.
+- Old `Command` logs. Logs now read `PlayerCommand`.
+
 ## Implemented In This Port
 
+- Direct Provider create/update/delete using Base44 `Provider` entity.
+- Provider connect uses `spotifyAuth` and persists connected/error status after callback.
 - Dynamic Spotify Redirect URI display on Spotify Provider page.
-- Player QR code now opens the public Player login URL instead of storing only raw credentials.
+- Player QR code opens the public Player login URL instead of storing only raw credentials.
 - Player login can prefill credentials from the QR URL.
 - Player page uses the real Spotify Web Playback SDK method `getCurrentState()`.
 - Player sends heartbeat/player state every 3 seconds.
@@ -26,14 +46,15 @@ This repository keeps the original Base44 app and ports the newer StudioSoundSet
 
 The code expects these entities to exist in Base44:
 
+- `Provider`
 - `Player`
 - `Zone`
-- `Provider`
 - `Playlist`
 - `PlaylistTrack`
+- `SpotifyDevice` optional for Spotify Connect diagnostics
 - `PlayerCommand`
 
-`PlayerCommand` should allow at least these fields:
+`PlayerCommand` must allow at least these fields:
 
 - `playerId`
 - `providerId`
@@ -50,6 +71,40 @@ The code expects these entities to exist in Base44:
 - `humanMessage`
 - `technicalMessage`
 - `suggestedFix`
+
+`Provider` should allow:
+
+- `name`
+- `displayName`
+- `clientId`
+- `clientSecret`
+- `status`
+- `authStatus`
+- `tokenStatus`
+- `spotifyUserEmail`
+- `spotifyUserId`
+- `lastError`
+- `redirectUri`
+- `connectedAt`
+
+## Required Base44 Functions
+
+The frontend still depends on existing Base44 functions:
+
+- `spotifyAuth`
+  - `getAuthUrl`
+  - `exchange`
+- `spotifyAccountControl`
+  - `getAccessToken`
+  - `transferPlayback`
+  - `playPlaylist`
+  - `getDevices`
+  - `getUserPlaylists`
+  - `importPlaylistTracks`
+- `createPlayerUserNew`
+- `playerAuthLogin`
+
+If any of these functions returns a failure, the UI now shows the real error instead of pretending success.
 
 ## Required Spotify Dashboard Setup
 
