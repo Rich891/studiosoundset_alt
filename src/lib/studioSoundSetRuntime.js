@@ -105,6 +105,47 @@ export function normalizeSpotifyState(state, player, extra = {}) {
   };
 }
 
+function getStoredPlayerSessionToken(player) {
+  return player?.sessionToken || player?.setupToken || localStorage.getItem('playerSessionToken') || '';
+}
+
+export async function publicPlayerRuntime(action, { playerId, sessionToken, payload = {} } = {}) {
+  const response = await base44.functions.invoke('publicPlayerRuntime', {
+    action,
+    playerId,
+    sessionToken,
+    payload,
+  });
+  if (!response.data?.success) {
+    const error = new Error(response.data?.error || `publicPlayerRuntime ${action} failed.`);
+    error.errorCode = response.data?.errorCode || 'PUBLIC_PLAYER_RUNTIME_FAILED';
+    throw error;
+  }
+  return response.data;
+}
+
+export async function bootstrapPublicPlayer(player) {
+  return publicPlayerRuntime('bootstrap', {
+    playerId: player?.id,
+    sessionToken: getStoredPlayerSessionToken(player),
+  });
+}
+
+export async function pollPublicPlayerCommands(player) {
+  return publicPlayerRuntime('pollCommands', {
+    playerId: player?.id,
+    sessionToken: getStoredPlayerSessionToken(player),
+  });
+}
+
+export async function sendPublicPlayerCommandResult(player, payload) {
+  return publicPlayerRuntime('commandResult', {
+    playerId: player?.id,
+    sessionToken: getStoredPlayerSessionToken(player),
+    payload,
+  });
+}
+
 export async function syncPlayerStatusFromSdk({ sdkPlayer, player, spotifyDeviceId, sdkReady, sdkConnected, extra = {} }) {
   if (!player?.id) return null;
   let state = null;
@@ -130,7 +171,11 @@ export async function syncPlayerStatusFromSdk({ sdkPlayer, player, spotifyDevice
     ...extra,
   });
 
-  await base44.entities.Player.update(player.id, updateData);
+  await publicPlayerRuntime('heartbeat', {
+    playerId: player.id,
+    sessionToken: getStoredPlayerSessionToken(player),
+    payload: updateData,
+  });
   return { state, updateData };
 }
 
