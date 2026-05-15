@@ -2,9 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { Music2, MapPin, Radio, Calendar, CheckCircle2, XCircle, AlertCircle, ChevronRight, Zap, Activity, Headphones, Terminal } from 'lucide-react';
+import { Music2, MapPin, Radio, Calendar, CheckCircle2, XCircle, AlertCircle, ChevronRight, Headphones, Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { isPlayerOnline, COMMAND_STATUS } from '@/lib/studioSoundSetRuntime';
+import { isPlayerOnline, COMMAND_STATUS, listPlayerCommands } from '@/lib/studioSoundSetRuntime';
 
 const SETUP_STEPS = [
   { id: 1, title: 'Spotify Provider verbinden', desc: 'Spotify Premium App Credentials speichern und OAuth verbinden.', link: '/spotify-accounts', icon: Music2, color: 'text-green-400', bg: 'bg-green-500/10 border-green-500/20' },
@@ -43,7 +43,7 @@ export default function Dashboard() {
   const { data: zones = [] } = useQuery({ queryKey: ['zones'], queryFn: () => base44.entities.Zone.list() });
   const { data: playlists = [] } = useQuery({ queryKey: ['playlists'], queryFn: () => base44.entities.Playlist.list() });
   const { data: players = [] } = useQuery({ queryKey: ['players'], queryFn: () => base44.entities.Player.list('-lastSeen'), refetchInterval: 3000 });
-  const { data: commands = [] } = useQuery({ queryKey: ['playerCommands'], queryFn: () => base44.entities.PlayerCommand.list('-createdAt'), refetchInterval: 3000 });
+  const { data: commands = [] } = useQuery({ queryKey: ['playerCommands'], queryFn: () => listPlayerCommands(), refetchInterval: 3000 });
 
   const connectedProviders = providers.filter(p => getProviderStatus(p) === 'connected');
   const onlinePlayers = players.filter(isPlayerOnline);
