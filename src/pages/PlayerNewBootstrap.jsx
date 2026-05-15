@@ -12,12 +12,31 @@ function readStoredPlayer() {
 export default function PlayerNewBootstrap() {
   const [ready, setReady] = useState(false);
   const [bootKey, setBootKey] = useState(0);
+  const [oauthCode, setOauthCode] = useState(null);
+  const [oauthRedirectUri, setOauthRedirectUri] = useState('');
 
   useEffect(() => {
     let cancelled = false;
 
     async function bootstrap() {
       const params = new URLSearchParams(window.location.search);
+
+      // Check if this is a Spotify OAuth callback
+      const code = params.get('code');
+      const state = params.get('state');
+
+      if (code && state && state.startsWith('player_')) {
+        // Coming back from Spotify OAuth — just pass code to PlayerRuntime
+        const redirectUri = `${window.location.origin}/player-new`;
+        if (!cancelled) {
+          setOauthCode(code);
+          setOauthRedirectUri(redirectUri);
+          setReady(true);
+        }
+        return;
+      }
+
+      // Normal boot: read and merge player params from URL
       const stored = readStoredPlayer();
       const playerId = params.get('playerId') || stored?.id || '';
       const providerId = params.get('providerId') || getPlayerProviderId(stored || {});
@@ -37,9 +56,12 @@ export default function PlayerNewBootstrap() {
           isActive: true,
         };
         localStorage.setItem('player', JSON.stringify(merged));
-        if (!localStorage.getItem('playerSessionToken')) localStorage.setItem('playerSessionToken', `qr_${merged.id}_${Date.now()}`);
+        if (!localStorage.getItem('playerSessionToken')) {
+          localStorage.setItem('playerSessionToken', `qr_${merged.id}_${Date.now()}`);
+        }
       }
 
+      // Best-effort: update player entity (no auth needed fails silently)
       if (playerId && providerId) {
         base44.entities.Player.update(playerId, {
           ...buildPlayerProviderPatch(providerId),
@@ -52,7 +74,7 @@ export default function PlayerNewBootstrap() {
       }
 
       if (!cancelled) {
-        setBootKey((value) => value + 1);
+        setBootKey((v) => v + 1);
         setReady(true);
       }
     }
@@ -66,11 +88,17 @@ export default function PlayerNewBootstrap() {
       <div className="min-h-screen aurora-bg flex items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-muted-foreground">
           <RefreshCw className="w-8 h-8 text-primary animate-spin" />
-          <p className="text-sm">Synchronisiere Player-Zuweisung...</p>
+          <p className="text-sm">Synchronisiere Player...</p>
         </div>
       </div>
     );
   }
 
-  return <PlayerRuntime key={bootKey} />;
+  return (
+    <PlayerRuntime
+      key={bootKey}
+      exchangeCode={oauthCode}
+      exchangeRedirectUri={oauthRedirectUri}
+    />
+  );
 }
