@@ -139,18 +139,32 @@ export function tokenLooksUsable(provider) {
 
 export async function getUsableSpotifyAccessToken(provider, persistUpdatedProvider) {
   if (tokenLooksUsable(provider)) return provider.accessToken;
-  const refreshed = await refreshSpotifyAccessToken(provider);
-  const patch = {
-    accessToken: refreshed.access_token,
-    refreshToken: refreshed.refresh_token || provider.refreshToken,
-    tokenExpiresAt: getTokenExpiryIso(refreshed.expires_in),
-    tokenStatus: 'valid',
-    status: 'connected',
-    authStatus: 'connected',
-    lastError: '',
-  };
-  if (persistUpdatedProvider) await persistUpdatedProvider(provider.id, patch).catch(() => {});
-  return patch.accessToken;
+  try {
+    const refreshed = await refreshSpotifyAccessToken(provider);
+    const patch = {
+      accessToken: refreshed.access_token,
+      refreshToken: refreshed.refresh_token || provider.refreshToken,
+      tokenExpiresAt: getTokenExpiryIso(refreshed.expires_in),
+      tokenStatus: 'valid',
+      status: 'connected',
+      authStatus: 'connected',
+      lastError: '',
+      lastTokenRefreshAt: new Date().toISOString(),
+    };
+    if (persistUpdatedProvider) await persistUpdatedProvider(provider.id, patch).catch(() => {});
+    return patch.accessToken;
+  } catch (error) {
+    if (persistUpdatedProvider && provider?.id) {
+      await persistUpdatedProvider(provider.id, {
+        tokenStatus: 'expired',
+        status: 'expired',
+        authStatus: 'expired',
+        lastError: error.message,
+        lastTokenRefreshAt: new Date().toISOString(),
+      }).catch(() => {});
+    }
+    throw error;
+  }
 }
 
 export async function spotifyApiRequest(path, { method = 'GET', accessToken, body } = {}) {
