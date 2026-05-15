@@ -86,16 +86,16 @@ export function normalizeSpotifyState(state, player, extra = {}) {
   const track = state?.track_window?.current_track;
   const contextUri = state?.context?.uri || state?.track_window?.current_context?.uri || '';
   return {
-    isPlaying: state ? !state.paused : false,
-    progressMs: state?.position || 0,
-    currentTrackDuration: track?.duration_ms || 0,
-    durationMs: track?.duration_ms || 0,
-    currentTrackName: track?.name || '',
-    currentTrackArtist: track?.artists?.map((a) => a.name).join(', ') || '',
-    currentTrackAlbum: track?.album?.name || '',
-    currentTrackCoverUrl: track?.album?.images?.[0]?.url || '',
-    currentTrackUri: track?.uri || '',
-    currentPlaylistUri: contextUri,
+    isPlaying: state ? !state.paused : !!extra.isPlaying,
+    progressMs: state?.position || extra.progressMs || 0,
+    currentTrackDuration: track?.duration_ms || extra.durationMs || 0,
+    durationMs: track?.duration_ms || extra.durationMs || 0,
+    currentTrackName: track?.name || extra.currentTrackName || '',
+    currentTrackArtist: track?.artists?.map((a) => a.name).join(', ') || extra.currentTrackArtist || '',
+    currentTrackAlbum: track?.album?.name || extra.currentTrackAlbum || '',
+    currentTrackCoverUrl: track?.album?.images?.[0]?.url || extra.currentTrackCoverUrl || '',
+    currentTrackUri: track?.uri || extra.currentTrackUri || '',
+    currentPlaylistUri: contextUri || extra.currentPlaylistUri || '',
     playbackStateAvailable: !!state,
     lastStatusUpdate: nowIso(),
     lastSeen: nowIso(),
@@ -171,10 +171,13 @@ export async function syncPlayerStatusFromSdk({ sdkPlayer, player, spotifyDevice
     }
   } catch {}
 
+  const effectiveDeviceId = spotifyDeviceId || player.spotifyDeviceId || '';
+  const effectiveSdkReady = Boolean(sdkReady || extra.sdkReady || effectiveDeviceId || sdkPlayer);
+  const effectiveSdkConnected = Boolean(sdkConnected || extra.sdkConnected || effectiveSdkReady);
   const updateData = normalizeSpotifyState(state, player, {
-    spotifyDeviceId: spotifyDeviceId || player.spotifyDeviceId || '',
-    sdkReady: !!sdkReady,
-    sdkConnected: !!sdkConnected,
+    spotifyDeviceId: effectiveDeviceId,
+    sdkReady: effectiveSdkReady,
+    sdkConnected: effectiveSdkConnected,
     volume: Number.isFinite(volume) ? volume : player.volume || 50,
     ...extra,
   });
