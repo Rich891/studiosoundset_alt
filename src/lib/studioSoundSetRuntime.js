@@ -36,6 +36,20 @@ export function formatMs(ms) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+function isMissingFunctionError(error) {
+  return error?.status === 404 || error?.response?.status === 404 || /status code 404|not found/i.test(error?.message || '');
+}
+
+function runtimeDiagnosticError(action, error) {
+  const diagnostic = new Error(
+    `Backend-Funktion publicPlayerRuntime ist in der veröffentlichten Base44-App nicht erreichbar (${action}). GitHub-Code ist vorhanden, aber Base44 hat die Function nicht deployed oder nicht registriert.`
+  );
+  diagnostic.errorCode = 'PUBLIC_PLAYER_RUNTIME_NOT_DEPLOYED';
+  diagnostic.technicalMessage = error?.message || String(error || 'missing function');
+  diagnostic.suggestedFix = 'publicPlayerRuntime in Base44 Functions deployen/registrieren und danach Player-Link neu öffnen.';
+  return diagnostic;
+}
+
 async function playerCommandControl(action, payload = {}) {
   const response = await base44.functions.invoke('playerCommandControl', { action, payload });
   if (!response.data?.success) {
@@ -111,15 +125,24 @@ function getStoredPlayerSessionToken(player) {
 }
 
 export async function publicPlayerRuntime(action, { playerId, sessionToken, payload = {} } = {}) {
-  const response = await base44.functions.invoke('publicPlayerRuntime', {
-    action,
-    playerId,
-    sessionToken,
-    payload,
-  });
+  let response;
+  try {
+    response = await base44.functions.invoke('publicPlayerRuntime', {
+      action,
+      playerId,
+      sessionToken,
+      payload,
+    });
+  } catch (error) {
+    if (isMissingFunctionError(error)) throw runtimeDiagnosticError(action, error);
+    throw error;
+  }
+
   if (!response.data?.success) {
     const error = new Error(response.data?.error || `publicPlayerRuntime ${action} failed.`);
     error.errorCode = response.data?.errorCode || 'PUBLIC_PLAYER_RUNTIME_FAILED';
+    error.technicalMessage = response.data?.technicalMessage || '';
+    error.suggestedFix = response.data?.suggestedFix || '';
     throw error;
   }
   return response.data;
