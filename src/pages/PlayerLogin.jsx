@@ -7,12 +7,13 @@ import { toast } from 'sonner';
 
 function buildPlayerFromQuery(params) {
   const id = params.get('playerId');
-  const email = params.get('email');
-  const passwordHash = params.get('password');
+  const email = params.get('email') || '';
+  const passwordHash = params.get('password') || '';
   const name = params.get('name') || 'StudioSoundSet Player';
   const providerId = params.get('providerId') || '';
   const zoneId = params.get('zoneId') || '';
-  if (!id || !email || !passwordHash) return null;
+  const sessionToken = params.get('sessionToken') || '';
+  if (!id) return null;
   return {
     id,
     name,
@@ -20,6 +21,8 @@ function buildPlayerFromQuery(params) {
     passwordHash,
     providerId,
     zoneId,
+    sessionToken,
+    setupToken: sessionToken,
     role: 'player',
     isActive: true,
     isOnline: true,
@@ -51,15 +54,16 @@ export default function PlayerLogin({ onLoginSuccess }) {
   }, []);
 
   const completeLogin = (player, sessionToken) => {
-    localStorage.setItem('playerSessionToken', sessionToken || `qr_${player.id}_${Date.now()}`);
-    localStorage.setItem('player', JSON.stringify(player));
+    const token = sessionToken || player.sessionToken || player.setupToken || '';
+    localStorage.setItem('playerSessionToken', token);
+    localStorage.setItem('player', JSON.stringify({ ...player, sessionToken: token, setupToken: player.setupToken || token }));
     toast.success('Angemeldet!');
     onLoginSuccess();
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!email || !password) {
+    if (!qrPlayer && (!email || !password)) {
       setError('Email und Passwort erforderlich');
       return;
     }
@@ -67,8 +71,8 @@ export default function PlayerLogin({ onLoginSuccess }) {
     setLoading(true);
     setError('');
 
-    if (qrPlayer && qrPlayer.email === email && qrPlayer.passwordHash === password) {
-      completeLogin(qrPlayer, `qr_${qrPlayer.id}_${Date.now()}`);
+    if (qrPlayer?.sessionToken && (!qrPlayer.email || !email || qrPlayer.email === email) && (!qrPlayer.passwordHash || !password || qrPlayer.passwordHash === password)) {
+      completeLogin(qrPlayer, qrPlayer.sessionToken);
       setLoading(false);
       return;
     }
@@ -84,7 +88,7 @@ export default function PlayerLogin({ onLoginSuccess }) {
     } catch (e) {
       const needsQr = /must be logged in|auth|required|403|401/i.test(e.message || '');
       setError(needsQr
-        ? 'Base44 blockiert öffentlichen Entity-Zugriff. Bitte nutze den QR-Code bzw. Player-Link aus “Player verwalten”, nicht nur Email/Passwort manuell.'
+        ? 'Base44 blockiert öffentlichen Entity-Zugriff. Bitte nutze den neuen Player-Link aus “Player verwalten”. Er muss eine Runtime Session enthalten.'
         : 'Fehler: ' + e.message
       );
     } finally {
@@ -105,6 +109,7 @@ export default function PlayerLogin({ onLoginSuccess }) {
             <p className="flex items-center gap-2"><Wifi className="w-3.5 h-3.5" /> Current Origin: <span className="font-mono break-all">{window.location.origin}</span></p>
             <p>App erreichbar: <span className={backendReachable === false ? 'text-red-400' : 'text-green-400'}>{backendReachable === null ? 'prüfe...' : backendReachable ? 'ja' : 'nein'}</span></p>
             <p>QR Player-ID: <span className={qrPlayer ? 'text-green-400' : 'text-yellow-300'}>{qrPlayer?.id || 'nicht im Link'}</span></p>
+            <p>Runtime Session: <span className={qrPlayer?.sessionToken ? 'text-green-400' : 'text-red-300'}>{qrPlayer?.sessionToken ? 'vorhanden' : 'fehlt'}</span></p>
             <p className="text-muted-foreground">Admin und Player bitte auf getrennten Geräten/Browserprofilen testen.</p>
           </div>
 
@@ -125,7 +130,7 @@ export default function PlayerLogin({ onLoginSuccess }) {
             </Button>
           </form>
 
-          <p className="text-xs text-muted-foreground text-center">Bei Base44 Auth-Sperre funktioniert der Login nur über den QR-/Player-Link mit Player-ID.</p>
+          <p className="text-xs text-muted-foreground text-center">Der öffentliche Player benötigt den neuen Player-Link mit Runtime Session.</p>
         </div>
       </div>
     </div>
