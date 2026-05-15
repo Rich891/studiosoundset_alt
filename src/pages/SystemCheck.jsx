@@ -6,7 +6,7 @@ import { Activity, CheckCircle2, XCircle, AlertCircle, RefreshCw, ChevronRight }
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { COMMAND_STATUS, isPlayerOnline } from '@/lib/studioSoundSetRuntime';
+import { COMMAND_STATUS, isPlayerOnline, listPlayerCommands } from '@/lib/studioSoundSetRuntime';
 
 const invoke = (fn, payload) => base44.functions.invoke(fn, payload);
 
@@ -49,7 +49,7 @@ export default function SystemCheck() {
   const { data: zones = [] } = useQuery({ queryKey: ['zones'], queryFn: () => base44.entities.Zone.list() });
   const { data: players = [] } = useQuery({ queryKey: ['players'], queryFn: () => base44.entities.Player.list('-lastSeen') });
   const { data: playlists = [] } = useQuery({ queryKey: ['playlists'], queryFn: () => base44.entities.Playlist.list() });
-  const { data: commands = [] } = useQuery({ queryKey: ['playerCommands'], queryFn: () => base44.entities.PlayerCommand.list('-createdAt') });
+  const { data: commands = [] } = useQuery({ queryKey: ['playerCommands'], queryFn: () => listPlayerCommands() });
 
   const runCheck = async () => {
     setRunning(true);
@@ -99,7 +99,7 @@ export default function SystemCheck() {
     const failedCommands = commands.filter(c => c.status === COMMAND_STATUS.FAILED || c.status === COMMAND_STATUS.TIMEOUT);
     add('PlayerCommand lifecycle', 'command', failedCommands.length ? 'warning' : 'ok', `${stuckCommands.length} pending/picked_up, ${failedCommands.length} failed/timeout.`, failedCommands.length ? 'Open Commands and inspect errors.' : 'No failed commands.', '', '/commands', 'Commands');
 
-    add('Base44 runtime note', 'global', 'warning', 'Base44 does not expose the local Prisma/Next.js runtime. This port uses Base44 Entities and Functions.', 'Keep schemas for PlayerCommand, Player, Provider, Playlist and PlaylistTrack available in Base44.');
+    add('Command architecture', 'global', 'ok', 'Commands use playerCommandControl + publicPlayerRuntime, not a public PlayerCommand entity.', 'This avoids missing Base44 entity schema errors and keeps Player command writes server-side.');
 
     setResults([...checks]);
     setRunning(false);
