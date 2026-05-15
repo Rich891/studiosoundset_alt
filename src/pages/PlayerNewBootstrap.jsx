@@ -12,43 +12,6 @@ function readStoredPlayer() {
   }
 }
 
-function pickUrlPlayer(params) {
-  const playerId = params.get('playerId');
-  if (!playerId) return null;
-  return {
-    id: playerId,
-    name: params.get('name') || 'StudioSoundSet Player',
-    email: params.get('email') || '',
-    passwordHash: params.get('password') || '',
-    providerId: params.get('providerId') || '',
-    apiCredentialSetId: params.get('providerId') || '',
-    spotifyAccountId: params.get('providerId') || '',
-    zoneId: params.get('zoneId') || '',
-    role: 'player',
-    isActive: true,
-  };
-}
-
-function mergePlayerRecords({ stored, urlPlayer, serverPlayer }) {
-  const providerId = getPlayerProviderId(serverPlayer || {}, {}) || getPlayerProviderId(urlPlayer || {}, {}) || getPlayerProviderId(stored || {}, {});
-  const zoneId = serverPlayer?.zoneId || urlPlayer?.zoneId || stored?.zoneId || '';
-  const merged = {
-    ...(stored || {}),
-    ...(serverPlayer || {}),
-    ...(urlPlayer || {}),
-    id: serverPlayer?.id || urlPlayer?.id || stored?.id,
-    name: serverPlayer?.name || urlPlayer?.name || stored?.name || 'StudioSoundSet Player',
-    email: serverPlayer?.email || urlPlayer?.email || stored?.email || '',
-    passwordHash: serverPlayer?.passwordHash || urlPlayer?.passwordHash || stored?.passwordHash || '',
-    providerId,
-    apiCredentialSetId: providerId,
-    spotifyAccountId: providerId,
-    zoneId,
-    role: 'player',
-  };
-  return merged.id ? merged : null;
-}
-
 export default function PlayerNewBootstrap() {
   const [ready, setReady] = useState(false);
   const [bootKey, setBootKey] = useState(0);
@@ -58,38 +21,45 @@ export default function PlayerNewBootstrap() {
 
     async function bootstrap() {
       const params = new URLSearchParams(window.location.search);
-      const urlPlayer = pickUrlPlayer(params);
+      const playerId = params.get('playerId') || readStoredPlayer()?.id;
+      const explicitProviderId = params.get('providerId') || '';
+      const explicitZoneId = params.get('zoneId') || '';
       const stored = readStoredPlayer();
-      const playerId = urlPlayer?.id || stored?.id;
-      let serverPlayer = null;
 
-      if (playerId) {
-        try {
-          serverPlayer = await base44.entities.Player.get(playerId);
-        } catch (error) {
-          // Public Base44 reads can fail on some deployments. The QR/link payload is still enough to boot the player.
-          console.warn('Player bootstrap could not read server Player. Falling back to QR/local session.', error);
-        }
-      }
-
-      const merged = mergePlayerRecords({ stored, urlPlayer, serverPlayer });
-
-      if (merged?.id) {
+      if (stored?.id || playerId) {
+        const merged = {
+          ...(stored || {}),
+          ...(playerId ? { id: playerId } : {}),
+          ...(explicitProviderId ? {
+            providerId: explicitProviderId,
+            apiCredentialSetId: explicitProviderId,
+            spotifyAccountId: explicitProviderId,
+          } : {}),
+          ...(explicitZoneId ? { zoneId: explicitZoneId } : {}),
+          role: 'player',
+          isActive: true,
+        };
         localStorage.setItem('player', JSON.stringify(merged));
         if (!localStorage.getItem('playerSessionToken')) {
           localStorage.setItem('playerSessionToken', `qr_${merged.id}_${Date.now()}`);
         }
+      }
 
-        const providerId = getPlayerProviderId(merged, {});
-        const serverProviderId = getPlayerProviderId(serverPlayer || {}, {});
-        if (providerId && (!serverPlayer || serverProviderId !== providerId || !serverPlayer.providerId || !serverPlayer.apiCredentialSetId)) {
-          base44.entities.Player.update(merged.id, {
-            ...buildPlayerProviderPatch(providerId),
-            zoneId: merged.zoneId || '',
-            isActive: true,
-            role: 'player',
-            updatedAt: new Date().toISOString(),
-          }).catch((error) => console.warn('Could not repair player provider assignment during bootstrap.', error));
+      if (playerId && explicitProviderId) {
+        try {
+          const serverPlayer = await base44.entities.Player.get(playerId);
+          const serverProviderId = getPlayerProviderId(serverPlayer || {}, {});
+          if (serverProviderId !== explicitProviderId || !serverPlayer?.providerId || !serverPlayer?.apiCredentialSetId || !serverPlayer?.spotifyAccountId) {
+            await base44.entities.Player.update(playerId, {
+              ...buildPlayerProviderPatch(explicitProviderId),
+              ...(explicitZoneId ? { zoneId: explicitZoneId } : {}),
+              isActive: true,
+              role: 'player',
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        } catch (error) {
+          console.warn('Could not repair player assignment during bootstrap. The local QR/session payload will still be used.', error);
         }
       }
 
