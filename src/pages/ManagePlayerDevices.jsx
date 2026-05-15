@@ -5,39 +5,65 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Copy, Trash2, Eye, EyeOff, Music2, AlertCircle, Wifi, WifiOff, QrCode, Wrench, CheckCircle2, PlugZap } from 'lucide-react';
+import { Plus, Copy, Trash2, Eye, EyeOff, Music2, AlertCircle, Wifi, WifiOff, QrCode, Wrench, CheckCircle2, PlugZap, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import PlayerSetupModal from '@/components/player/PlayerSetupModal';
 import { motion } from 'framer-motion';
 import { isPlayerOnline } from '@/lib/studioSoundSetRuntime';
-import {
-  buildPlayerProviderPatch,
-  getPlayerProviderAssignmentState,
-  getPlayerProviderId,
-  getProviderDisplayName,
-  providerStatus,
-} from '@/lib/playerAssignments';
+import { buildPlayerProviderPatch, getPlayerProviderId, getProviderDisplayName, providerStatus } from '@/lib/playerAssignments';
+import { listPlayerConfigs, mergePlayerWithConfig, savePlayerConfig } from '@/lib/playerConfigStore';
 
 const invoke = (fn, payload) => base44.functions.invoke(fn, payload);
 
 const EMPTY_FORM = { name: '', providerId: '', zoneId: '', passwordHash: '' };
 const EMPTY_EDIT = { player: null, providerId: '', zoneId: '' };
+const EMPTY_ZONE = { name: '', color: '#7c3aed', defaultVolume: 50, minVolume: 10, maxVolume: 90 };
 
 export default function ManagePlayerDevices() {
   const queryClient = useQueryClient();
   const [showDialog, setShowDialog] = useState(false);
+  const [showZoneDialog, setShowZoneDialog] = useState(false);
+  const [zoneTarget, setZoneTarget] = useState('create');
+  const [zoneForm, setZoneForm] = useState(EMPTY_ZONE);
   const [showPassword, setShowPassword] = useState({});
   const [setupModalOpen, setSetupModalOpen] = useState(false);
   const [setupData, setSetupData] = useState({ playerId: '', providerId: '', providerClientId: '', zoneId: '', deviceName: '' });
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [editAssignment, setEditAssignment] = useState(EMPTY_EDIT);
 
-  const { data: players = [], error: playerError } = useQuery({ queryKey: ['players'], queryFn: () => base44.entities.Player.list('-updated_date'), refetchInterval: 3000 });
+  const { data: rawPlayers = [], error: playerError } = useQuery({ queryKey: ['players'], queryFn: () => base44.entities.Player.list('-updated_date'), refetchInterval: 3000 });
   const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: () => base44.entities.Provider.list('-created_date') });
   const { data: zones = [] } = useQuery({ queryKey: ['zones'], queryFn: () => base44.entities.Zone.list() });
+  const { data: configByPlayer = {} } = useQuery({ queryKey: ['player-configs'], queryFn: listPlayerConfigs, refetchInterval: 3000 });
 
+  const players = useMemo(() => rawPlayers.map((p) => mergePlayerWithConfig(p, configByPlayer[p.id])), [rawPlayers, configByPlayer]);
   const zonesById = useMemo(() => Object.fromEntries(zones.map((zone) => [zone.id, zone])), [zones]);
   const providersById = useMemo(() => Object.fromEntries(providers.map((provider) => [provider.id, provider])), [providers]);
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['players'] });
+    queryClient.invalidateQueries({ queryKey: ['player-configs'] });
+    queryClient.invalidateQueries({ queryKey: ['zones'] });
+  };
+
+  const persistPlayerAssignment = async (player, providerId, zoneId) => {
+    const provider = providersById[providerId];
+    const zone = zonesById[zoneId];
+    await savePlayerConfig(player, {
+      providerId,
+      providerName: provider?.name || provider?.displayName || '',
+      spotifyClientId: provider?.clientId || player?.spotifyClientId || '',
+      zoneId: zoneId || '',
+      zoneName: zone?.name || '',
+    });
+    await base44.entities.Player.update(player.id, {
+      ...buildPlayerProviderPatch(providerId),
+      spotifyClientId: provider?.clientId || player?.spotifyClientId || '',
+      zoneId: zoneId || '',
+      lastError: '',
+      updatedAt: new Date().toISOString(),
+    }).catch(() => {});
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data) => {
@@ -50,30 +76,16 @@ export default function ManagePlayerDevices() {
         spotifyAccountId: providerId,
         spotifyClientId: provider?.clientId || '',
       });
-      if (!response.data?.success) throw new Error(response.data?.error || 'Player konnte nicht erstellt werden. Prüfe Base44 Function createPlayerUserNew.');
-
-      const playerUser = response.data.playerUser;
-      await base44.entities.Player.update(playerUser.id, {
-        ...buildPlayerProviderPatch(providerId),
-        spotifyClientId: provider?.clientId || '',
-        zoneId: data.zoneId || '',
-      }).catch(() => {});
-
-      return { ...playerUser, ...buildPlayerProviderPatch(providerId), spotifyClientId: provider?.clientId || '', zoneId: data.zoneId || '' };
+      if (!response.data?.success) throw new Error(response.data?.error || 'Player konnte nicht erstellt werden.');
+      const player = response.data.playerUser;
+      const hydrated = { ...player, ...buildPlayerProviderPatch(providerId), spotifyClientId: provider?.clientId || '', zoneId: data.zoneId || '' };
+      await persistPlayerAssignment(hydrated, providerId, data.zoneId || '');
+      return hydrated;
     },
     onSuccess: (player) => {
-      queryClient.invalidateQueries({ queryKey: ['players'] });
-      toast.success('Player erstellt. API-Verbindung wurde direkt am Player gespeichert.');
-      const providerId = getPlayerProviderId(player, zonesById[player.zoneId]) || formData.providerId;
-      const provider = providersById[providerId];
-      setSetupData({
-        playerId: player.id,
-        providerId,
-        providerClientId: provider?.clientId || player.spotifyClientId || '',
-        zoneId: player.zoneId || formData.zoneId || '',
-        deviceName: player.name,
-      });
-      setSetupModalOpen(true);
+      refresh();
+      toast.success('Player erstellt und API-Zuweisung gespeichert.');
+      openSetup(player);
       setShowDialog(false);
       setFormData(EMPTY_FORM);
     },
@@ -83,17 +95,10 @@ export default function ManagePlayerDevices() {
   const updateAssignmentMutation = useMutation({
     mutationFn: async ({ player, providerId, zoneId }) => {
       if (!player?.id) throw new Error('Player fehlt.');
-      const provider = providersById[providerId];
-      const patch = {
-        ...buildPlayerProviderPatch(providerId),
-        spotifyClientId: provider?.clientId || '',
-        zoneId: zoneId || '',
-        lastError: '',
-      };
-      return base44.entities.Player.update(player.id, patch);
+      await persistPlayerAssignment(player, providerId, zoneId === 'none' ? '' : zoneId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['players'] });
+      refresh();
       toast.success('Player-Zuweisung gespeichert.');
       setEditAssignment(EMPTY_EDIT);
     },
@@ -102,13 +107,32 @@ export default function ManagePlayerDevices() {
 
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.Player.delete(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['players'] }); toast.success('Player gelöscht.'); },
+    onSuccess: () => { refresh(); toast.success('Player gelöscht.'); },
     onError: (err) => toast.error(`Player konnte nicht gelöscht werden: ${err.message}`),
+  });
+
+  const createZoneMutation = useMutation({
+    mutationFn: (data) => base44.entities.Zone.create({ ...data, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
+    onSuccess: (zone) => {
+      queryClient.invalidateQueries({ queryKey: ['zones'] });
+      toast.success('Zone erstellt.');
+      if (zoneTarget === 'edit') setEditAssignment((prev) => ({ ...prev, zoneId: zone.id }));
+      else setFormData((prev) => ({ ...prev, zoneId: zone.id }));
+      setZoneForm(EMPTY_ZONE);
+      setShowZoneDialog(false);
+    },
+    onError: (err) => toast.error(`Zone konnte nicht erstellt werden: ${err.message}`),
   });
 
   const handleCreate = async () => {
     if (!formData.name.trim() || !formData.providerId) return toast.error('Name und API-Verbindung sind erforderlich.');
     createMutation.mutate({ ...formData, zoneId: formData.zoneId === 'none' ? '' : formData.zoneId, passwordHash: formData.passwordHash || 'player' });
+  };
+
+  const openZoneDialog = (target) => {
+    setZoneTarget(target);
+    setZoneForm(EMPTY_ZONE);
+    setShowZoneDialog(true);
   };
 
   const copyToClipboard = (text) => { navigator.clipboard.writeText(text || ''); toast.success('Kopiert.'); };
@@ -120,33 +144,29 @@ export default function ManagePlayerDevices() {
   };
 
   const openSetup = (player) => {
-    const providerId = getPlayerProviderId(player, zonesById[player.zoneId]);
+    const merged = mergePlayerWithConfig(player, configByPlayer[player.id]);
+    const providerId = getPlayerProviderId(merged);
     const provider = providersById[providerId];
-    setSetupData({
-      playerId: player.id,
-      providerId,
-      providerClientId: provider?.clientId || player.spotifyClientId || '',
-      zoneId: player.zoneId || '',
-      deviceName: player.name,
-    });
+    setSetupData({ playerId: merged.id, providerId, providerClientId: provider?.clientId || merged.spotifyClientId || '', zoneId: merged.zoneId || '', deviceName: merged.name });
     setSetupModalOpen(true);
   };
 
   const openEditAssignment = (player) => {
-    const providerId = getPlayerProviderId(player, zonesById[player.zoneId]);
-    setEditAssignment({ player, providerId: providerId || '', zoneId: player.zoneId || 'none' });
+    const merged = mergePlayerWithConfig(player, configByPlayer[player.id]);
+    const providerId = getPlayerProviderId(merged);
+    setEditAssignment({ player: merged, providerId: providerId || '', zoneId: merged.zoneId || 'none' });
   };
 
-  const getZoneName = (id) => zones.find(z => z.id === id)?.name || '—';
+  const getZoneName = (player) => player.zoneName || zonesById[player.zoneId]?.name || '—';
   const connectedProviders = providers.filter(p => providerStatus(p) === 'connected');
-  const playersNeedingSetup = players.filter((player) => getPlayerProviderAssignmentState(player, zonesById[player.zoneId]).needsRepair);
+  const playersMissingApi = players.filter((player) => !getPlayerProviderId(player));
 
   return (
     <div className="p-4 lg:p-8 space-y-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-black">Players</h1>
-          <p className="text-sm text-muted-foreground mt-1">Player sind die operative Einheit. Provider/API, Spotify-Verbindung, Commands und Playlists hängen am Player. Zonen sind nur optionale Räume.</p>
+          <p className="text-sm text-muted-foreground mt-1">Studio → Admin → Provider/API → Player Accounts → Player Sessions → Playlists → Commands. Zonen sind nur optionale Räume.</p>
         </div>
         <Button onClick={() => setShowDialog(true)} className="gap-2 bg-primary hover:bg-primary/90"><Plus className="w-4 h-4" />Neuer Player</Button>
       </div>
@@ -156,21 +176,21 @@ export default function ManagePlayerDevices() {
           <PlugZap className="w-5 h-5 text-cyan-300 mt-0.5 flex-shrink-0" />
           <div className="space-y-1 text-sm">
             <p className="font-black text-cyan-200">Finaler Flow</p>
-            <p className="text-muted-foreground">Provider/API anlegen → Player erstellen → Zone optional zuweisen → Player-Link auf dem Gerät öffnen → Spotify direkt am Player verbinden.</p>
+            <p className="text-muted-foreground">Provider/API anlegen → Player erstellen → Zone optional direkt hier erstellen/zuweisen → Player-Link auf dem Gerät öffnen → Spotify direkt am Player verbinden.</p>
           </div>
         </div>
       </div>
 
       {playerError && <div className="bento-panel border-red-500/20 bg-red-500/5 p-4 text-sm text-red-300">Player konnten nicht geladen werden: {playerError.message}</div>}
       {connectedProviders.length === 0 && <div className="bento-panel border-yellow-500/20 bg-yellow-500/5 p-5 flex items-center gap-3"><AlertCircle className="w-5 h-5 text-yellow-400" /><p className="text-sm text-yellow-300">Keine verbundene API-Verbindung. Erstelle und verbinde zuerst einen Spotify Provider im Provider / API Center.</p></div>}
-      {playersNeedingSetup.length > 0 && <div className="bento-panel border-yellow-500/20 bg-yellow-500/5 p-5 flex items-start gap-3"><Wrench className="w-5 h-5 text-yellow-400 mt-0.5" /><div><p className="font-bold text-yellow-200">{playersNeedingSetup.length} Player brauchen eine API-Zuweisung</p><p className="text-sm text-yellow-300/80">Öffne „Zuweisung bearbeiten“ und speichere die API-Verbindung direkt am Player.</p></div></div>}
+      {playersMissingApi.length > 0 && <div className="bento-panel border-yellow-500/20 bg-yellow-500/5 p-5 flex items-start gap-3"><Wrench className="w-5 h-5 text-yellow-400 mt-0.5" /><div><p className="font-bold text-yellow-200">{playersMissingApi.length} Player brauchen eine API-Zuweisung</p><p className="text-sm text-yellow-300/80">Öffne „Zuweisung bearbeiten“ und speichere eine API-Verbindung direkt am Player. Diese Zuweisung wird unabhängig vom Player-Schema im Config-Log gespeichert.</p></div></div>}
 
       <div className="grid gap-4">
         {players.length === 0 ? (
           <motion.div className="bento-panel border-dashed border-primary/20 p-12 text-center"><Music2 className="w-12 h-12 text-muted-foreground/20 mx-auto mb-4" /><h3 className="text-lg font-bold mb-2">Keine Player vorhanden</h3><p className="text-muted-foreground mb-6">Erstelle den ersten Player und öffne den Setup-Link auf dem Player-Gerät.</p><Button onClick={() => setShowDialog(true)} className="bg-primary">Neuer Player</Button></motion.div>
         ) : players.map((player, idx) => {
-          const assignment = getPlayerProviderAssignmentState(player, null);
-          const provider = providersById[assignment.providerId];
+          const providerId = getPlayerProviderId(player);
+          const provider = providersById[providerId];
           const online = isPlayerOnline(player);
           const isConnected = providerStatus(provider) === 'connected';
           return (
@@ -183,7 +203,7 @@ export default function ManagePlayerDevices() {
                       {online ? <Wifi className="w-3.5 h-3.5 text-green-400" /> : <WifiOff className="w-3.5 h-3.5 text-yellow-400" />}
                       <span className={`text-xs font-semibold ${online ? 'text-green-400' : 'text-yellow-400'}`}>{online ? 'Online' : 'Offline'}</span>
                       {player.sdkReady && <span className="text-xs text-cyan-400">SDK Ready</span>}
-                      {assignment.source === 'player' && <span className="text-xs text-green-400 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> API am Player</span>}
+                      {providerId && <span className="text-xs text-green-400 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> API am Player</span>}
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
@@ -193,12 +213,12 @@ export default function ManagePlayerDevices() {
                 </div>
 
                 <div className="grid md:grid-cols-4 gap-3 text-sm">
-                  <div className={`rounded-lg p-3 border ${assignment.providerId ? 'bg-muted/20 border-border/30' : 'bg-red-500/5 border-red-500/20'}`}>
+                  <div className={`rounded-lg p-3 border ${providerId ? 'bg-muted/20 border-border/30' : 'bg-red-500/5 border-red-500/20'}`}>
                     <p className="text-xs text-muted-foreground font-semibold mb-1">API-Verbindung</p>
-                    <p className="font-bold text-sm">{provider ? getProviderDisplayName(provider) : assignment.providerId ? 'Provider nicht gefunden' : 'Nicht zugewiesen'}</p>
-                    <p className={`text-xs mt-1 ${isConnected ? 'text-green-400' : assignment.providerId ? 'text-yellow-400' : 'text-red-300'}`}>{provider ? providerStatus(provider) : assignment.label}</p>
+                    <p className="font-bold text-sm">{provider ? getProviderDisplayName(provider) : providerId ? 'Provider nicht gefunden' : 'Nicht zugewiesen'}</p>
+                    <p className={`text-xs mt-1 ${isConnected ? 'text-green-400' : providerId ? 'text-yellow-400' : 'text-red-300'}`}>{provider ? providerStatus(provider) : providerId ? 'im Config-Log gespeichert' : 'Keine API-Verbindung'}</p>
                   </div>
-                  <div className="bg-muted/20 rounded-lg p-3 border border-border/30"><p className="text-xs text-muted-foreground font-semibold mb-1">Zone</p><p className="font-bold text-sm">{getZoneName(player.zoneId)}</p><p className="text-xs text-muted-foreground mt-1">optional</p></div>
+                  <div className="bg-muted/20 rounded-lg p-3 border border-border/30"><p className="text-xs text-muted-foreground font-semibold mb-1">Zone</p><p className="font-bold text-sm">{getZoneName(player)}</p><p className="text-xs text-muted-foreground mt-1">optional</p></div>
                   <div className="bg-muted/20 rounded-lg p-3 border border-border/30"><p className="text-xs text-muted-foreground font-semibold mb-1">Device ID</p><p className="font-mono text-xs break-all">{player.spotifyDeviceId || '—'}</p></div>
                   <div className="bg-muted/20 rounded-lg p-3 border border-border/30"><p className="text-xs text-muted-foreground font-semibold mb-1">Last Command</p><p className="text-xs break-all">{player.lastCommand || '—'} {player.lastCommandStatus ? `· ${player.lastCommandStatus}` : ''}</p></div>
                 </div>
@@ -223,11 +243,15 @@ export default function ManagePlayerDevices() {
       <PlayerSetupModal open={setupModalOpen} onOpenChange={setSetupModalOpen} playerId={setupData.playerId} providerId={setupData.providerId} providerClientId={setupData.providerClientId} zoneId={setupData.zoneId} deviceName={setupData.deviceName} />
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-md"><DialogHeader><DialogTitle>Neuer Player</DialogTitle></DialogHeader><div className="space-y-4"><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Player-Name</label><Input placeholder="z.B. Gym Player" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} /></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">API-Verbindung</label><Select value={formData.providerId} onValueChange={(value) => setFormData({ ...formData, providerId: value })}><SelectTrigger><SelectValue placeholder="API-Verbindung wählen" /></SelectTrigger><SelectContent>{providers.length === 0 ? <SelectItem disabled value="none">Keine API-Verbindung konfiguriert</SelectItem> : providers.map((acc) => <SelectItem key={acc.id} value={acc.id}>{getProviderDisplayName(acc)} {providerStatus(acc) === 'connected' ? '✓' : '(nicht verbunden)'}</SelectItem>)}</SelectContent></Select><p className="text-[11px] text-muted-foreground mt-1">Diese Zuweisung wird direkt am Player gespeichert.</p></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Zone / Raum optional</label><Select value={formData.zoneId || 'none'} onValueChange={(value) => setFormData({ ...formData, zoneId: value })}><SelectTrigger><SelectValue placeholder="Zone wählen" /></SelectTrigger><SelectContent><SelectItem value="none">Keine</SelectItem>{zones.map((zone) => <SelectItem key={zone.id} value={zone.id}>{zone.name}</SelectItem>)}</SelectContent></Select></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Player-Passwort optional</label><div className="flex gap-2"><Input type="text" placeholder="optional" value={formData.passwordHash} onChange={(e) => setFormData({ ...formData, passwordHash: e.target.value })} /><Button type="button" variant="outline" onClick={generatePassword} className="whitespace-nowrap">Generieren</Button></div></div><div className="flex gap-2 pt-4"><Button variant="outline" onClick={() => setShowDialog(false)} className="flex-1">Abbrechen</Button><Button onClick={handleCreate} disabled={createMutation.isPending} className="flex-1">{createMutation.isPending ? 'Erstelle...' : 'Erstellen'}</Button></div></div></DialogContent>
+        <DialogContent className="max-w-md"><DialogHeader><DialogTitle>Neuer Player</DialogTitle></DialogHeader><div className="space-y-4"><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Player-Name</label><Input placeholder="z.B. Gym Player" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} /></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">API-Verbindung</label><Select value={formData.providerId} onValueChange={(value) => setFormData({ ...formData, providerId: value })}><SelectTrigger><SelectValue placeholder="API-Verbindung wählen" /></SelectTrigger><SelectContent>{providers.length === 0 ? <SelectItem disabled value="none">Keine API-Verbindung konfiguriert</SelectItem> : providers.map((acc) => <SelectItem key={acc.id} value={acc.id}>{getProviderDisplayName(acc)} {providerStatus(acc) === 'connected' ? '✓' : '(nicht verbunden)'}</SelectItem>)}</SelectContent></Select></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Zone / Raum optional</label><div className="flex gap-2"><Select value={formData.zoneId || 'none'} onValueChange={(value) => setFormData({ ...formData, zoneId: value })}><SelectTrigger><SelectValue placeholder="Zone wählen" /></SelectTrigger><SelectContent><SelectItem value="none">Keine</SelectItem>{zones.map((zone) => <SelectItem key={zone.id} value={zone.id}>{zone.name}</SelectItem>)}</SelectContent></Select><Button type="button" variant="outline" onClick={() => openZoneDialog('create')}>+ Zone</Button></div></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Player-Passwort optional</label><div className="flex gap-2"><Input type="text" placeholder="optional" value={formData.passwordHash} onChange={(e) => setFormData({ ...formData, passwordHash: e.target.value })} /><Button type="button" variant="outline" onClick={generatePassword} className="whitespace-nowrap">Generieren</Button></div></div><div className="flex gap-2 pt-4"><Button variant="outline" onClick={() => setShowDialog(false)} className="flex-1">Abbrechen</Button><Button onClick={handleCreate} disabled={createMutation.isPending} className="flex-1">{createMutation.isPending ? 'Erstelle...' : 'Erstellen'}</Button></div></div></DialogContent>
       </Dialog>
 
       <Dialog open={!!editAssignment.player} onOpenChange={(open) => !open && setEditAssignment(EMPTY_EDIT)}>
-        <DialogContent className="max-w-md"><DialogHeader><DialogTitle>Player-Zuweisung bearbeiten</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-lg border border-border/40 bg-muted/10 p-3 text-sm"><p className="font-bold">{editAssignment.player?.name}</p><p className="text-xs text-muted-foreground">API-Verbindung und Zone werden direkt am Player gespeichert.</p></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">API-Verbindung</label><Select value={editAssignment.providerId || 'none'} onValueChange={(value) => setEditAssignment(prev => ({ ...prev, providerId: value === 'none' ? '' : value }))}><SelectTrigger><SelectValue placeholder="API-Verbindung wählen" /></SelectTrigger><SelectContent><SelectItem value="none">Keine</SelectItem>{providers.map((acc) => <SelectItem key={acc.id} value={acc.id}>{getProviderDisplayName(acc)} {providerStatus(acc) === 'connected' ? '✓' : '(nicht verbunden)'}</SelectItem>)}</SelectContent></Select></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Zone / Raum</label><Select value={editAssignment.zoneId || 'none'} onValueChange={(value) => setEditAssignment(prev => ({ ...prev, zoneId: value }))}><SelectTrigger><SelectValue placeholder="Zone wählen" /></SelectTrigger><SelectContent><SelectItem value="none">Keine</SelectItem>{zones.map((zone) => <SelectItem key={zone.id} value={zone.id}>{zone.name}</SelectItem>)}</SelectContent></Select></div><div className="flex gap-2 pt-4"><Button variant="outline" onClick={() => setEditAssignment(EMPTY_EDIT)} className="flex-1">Abbrechen</Button><Button onClick={() => updateAssignmentMutation.mutate({ player: editAssignment.player, providerId: editAssignment.providerId, zoneId: editAssignment.zoneId === 'none' ? '' : editAssignment.zoneId })} disabled={updateAssignmentMutation.isPending} className="flex-1">Speichern</Button></div></div></DialogContent>
+        <DialogContent className="max-w-md"><DialogHeader><DialogTitle>Player-Zuweisung bearbeiten</DialogTitle></DialogHeader><div className="space-y-4"><div className="rounded-lg border border-border/40 bg-muted/10 p-3 text-sm"><p className="font-bold">{editAssignment.player?.name}</p><p className="text-xs text-muted-foreground">API-Verbindung und Zone werden direkt am Player gespeichert.</p></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">API-Verbindung</label><Select value={editAssignment.providerId || 'none'} onValueChange={(value) => setEditAssignment(prev => ({ ...prev, providerId: value === 'none' ? '' : value }))}><SelectTrigger><SelectValue placeholder="API-Verbindung wählen" /></SelectTrigger><SelectContent><SelectItem value="none">Keine</SelectItem>{providers.map((acc) => <SelectItem key={acc.id} value={acc.id}>{getProviderDisplayName(acc)} {providerStatus(acc) === 'connected' ? '✓' : '(nicht verbunden)'}</SelectItem>)}</SelectContent></Select></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Zone / Raum</label><div className="flex gap-2"><Select value={editAssignment.zoneId || 'none'} onValueChange={(value) => setEditAssignment(prev => ({ ...prev, zoneId: value }))}><SelectTrigger><SelectValue placeholder="Zone wählen" /></SelectTrigger><SelectContent><SelectItem value="none">Keine</SelectItem>{zones.map((zone) => <SelectItem key={zone.id} value={zone.id}>{zone.name}</SelectItem>)}</SelectContent></Select><Button type="button" variant="outline" onClick={() => openZoneDialog('edit')}>+ Zone</Button></div></div><div className="flex gap-2 pt-4"><Button variant="outline" onClick={() => setEditAssignment(EMPTY_EDIT)} className="flex-1">Abbrechen</Button><Button onClick={() => updateAssignmentMutation.mutate({ player: editAssignment.player, providerId: editAssignment.providerId, zoneId: editAssignment.zoneId })} disabled={updateAssignmentMutation.isPending} className="flex-1">Speichern</Button></div></div></DialogContent>
+      </Dialog>
+
+      <Dialog open={showZoneDialog} onOpenChange={setShowZoneDialog}>
+        <DialogContent className="max-w-md"><DialogHeader><DialogTitle>Neue Zone erstellen</DialogTitle></DialogHeader><div className="space-y-4"><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Zonenname</label><Input placeholder="z.B. Gym" value={zoneForm.name} onChange={(e) => setZoneForm({ ...zoneForm, name: e.target.value })} /></div><div><label className="text-xs font-semibold text-muted-foreground mb-2 block">Farbe</label><Input type="color" value={zoneForm.color} onChange={(e) => setZoneForm({ ...zoneForm, color: e.target.value })} /></div><div className="grid grid-cols-3 gap-2"><div><label className="text-xs text-muted-foreground">Default</label><Input type="number" value={zoneForm.defaultVolume} onChange={(e) => setZoneForm({ ...zoneForm, defaultVolume: Number(e.target.value) })} /></div><div><label className="text-xs text-muted-foreground">Min</label><Input type="number" value={zoneForm.minVolume} onChange={(e) => setZoneForm({ ...zoneForm, minVolume: Number(e.target.value) })} /></div><div><label className="text-xs text-muted-foreground">Max</label><Input type="number" value={zoneForm.maxVolume} onChange={(e) => setZoneForm({ ...zoneForm, maxVolume: Number(e.target.value) })} /></div></div><p className="text-xs text-muted-foreground">Zonen speichern keine Provider. Sie sind nur Raum/Default-Werte.</p><div className="flex gap-2 pt-2"><Button variant="outline" onClick={() => setShowZoneDialog(false)} className="flex-1">Abbrechen</Button><Button onClick={() => zoneForm.name.trim() ? createZoneMutation.mutate(zoneForm) : toast.error('Zonenname fehlt.')} disabled={createZoneMutation.isPending} className="flex-1">Erstellen</Button></div></div></DialogContent>
       </Dialog>
     </div>
   );
