@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { motion } from 'framer-motion';
 import {
-  Radio, RefreshCw, AlertCircle, Play, Pause, SkipForward, SkipBack,
+  Radio, RefreshCw, Play, Pause, SkipForward, SkipBack,
   Volume2, ListMusic, Wifi, WifiOff, Music2, CheckCircle2, Clock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -133,6 +133,7 @@ function PlayerCard({ player, provider, playlists, commands }) {
             <p className="font-bold text-sm">{player.name}</p>
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               {online ? <><Wifi className="w-3 h-3 text-green-400" /> Online</> : <><WifiOff className="w-3 h-3 text-orange-400" /> {stale ? 'Stale/Offline' : 'Offline'}</>}
+              {provider ? <span className="ml-2 text-green-400">API verbunden</span> : <span className="ml-2 text-yellow-300">API-Zuweisung fehlt</span>}
             </p>
           </div>
         </div>
@@ -270,10 +271,10 @@ export default function NowPlaying() {
           {players.map((player, i) => {
             const providerId = providerIdFromPlayer(player);
             const provider = providers.find(p => p.id === providerId);
-            const playerPlaylists = playlists.filter(p => p.providerId === providerId || p.spotifyAccountId === providerId || p.playerId === player.id);
+            const playerPlaylists = playlists.filter(p => p.playerId === player.id || (providerId && (p.providerId === providerId || p.spotifyAccountId === providerId)));
             return (
               <motion.div key={player.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}>
-                {provider ? <PlayerCard player={player} provider={provider} playlists={playerPlaylists} commands={commands} /> : <div className="bento-panel p-5 text-center"><AlertCircle className="w-8 h-8 text-yellow-400 mx-auto mb-2" /><p className="text-sm font-bold">{player.name}</p><p className="text-xs text-muted-foreground mt-1">Provider nicht direkt am Player zugewiesen</p></div>}
+                <PlayerCard player={player} provider={provider} playlists={playerPlaylists} commands={commands} />
               </motion.div>
             );
           })}
