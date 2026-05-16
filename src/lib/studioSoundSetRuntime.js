@@ -18,15 +18,22 @@ export const COMMAND_STATUS = {
   TIMEOUT: 'timeout',
 };
 
-export const PLAYER_STALE_AFTER_MS = 10000;
-export const PLAYER_HEARTBEAT_INTERVAL_MS = 2000;
-export const PLAYER_COMMAND_POLL_INTERVAL_MS = 1000;
-export const ADMIN_LIVE_REFETCH_INTERVAL_MS = 1000;
-export const COMMAND_PENDING_TIMEOUT_MS = 12000;
-export const COMMAND_PICKED_UP_TIMEOUT_MS = 20000;
+export const PLAYER_STALE_AFTER_MS = 20000;
+export const PLAYER_HEARTBEAT_INTERVAL_MS = 5000;
+export const PLAYER_COMMAND_POLL_INTERVAL_MS = 3000;
+export const ADMIN_LIVE_REFETCH_INTERVAL_MS = 5000;
+export const ADMIN_TIMEOUT_SWEEP_INTERVAL_MS = 15000;
+export const COMMAND_PENDING_TIMEOUT_MS = 20000;
+export const COMMAND_PICKED_UP_TIMEOUT_MS = 30000;
 
 export function nowIso() {
   return new Date().toISOString();
+}
+
+export function isRateLimitError(error) {
+  return error?.status === 429
+    || error?.response?.status === 429
+    || /status code 429|\b429\b|rate limit|too many requests/i.test(error?.message || '');
 }
 
 export function isPlayerOnline(player) {
@@ -55,8 +62,22 @@ function runtimeDiagnosticError(action, error) {
   return diagnostic;
 }
 
+function rateLimitDiagnosticError(action, error) {
+  const diagnostic = new Error(`Base44 Rate Limit erreicht (${action}). Synchronisation wird automatisch gedrosselt.`);
+  diagnostic.errorCode = 'RATE_LIMITED';
+  diagnostic.technicalMessage = error?.message || String(error || 'rate limit');
+  diagnostic.suggestedFix = 'Weniger Admin/Player Tabs offen lassen oder kurz warten. Die App reduziert die Polling-Frequenz automatisch.';
+  return diagnostic;
+}
+
 async function playerCommandControl(action, payload = {}) {
-  const response = await base44.functions.invoke('playerCommandControl', { action, payload });
+  let response;
+  try {
+    response = await base44.functions.invoke('playerCommandControl', { action, payload });
+  } catch (error) {
+    if (isRateLimitError(error)) throw rateLimitDiagnosticError(`playerCommandControl:${action}`, error);
+    throw error;
+  }
   if (!response.data?.success) {
     const error = new Error(response.data?.error || `playerCommandControl ${action} failed.`);
     error.errorCode = response.data?.errorCode || 'PLAYER_COMMAND_CONTROL_FAILED';
@@ -144,6 +165,7 @@ export async function publicPlayerRuntime(action, { playerId, sessionToken, payl
     });
   } catch (error) {
     if (isMissingFunctionError(error)) throw runtimeDiagnosticError(action, error);
+    if (isRateLimitError(error)) throw rateLimitDiagnosticError(`publicPlayerRuntime:${action}`, error);
     throw error;
   }
 
