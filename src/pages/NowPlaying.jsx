@@ -20,9 +20,11 @@ import {
   listPlayerCommands,
   markStalePendingCommands,
 } from '@/lib/studioSoundSetRuntime';
+import { getPlayerProviderId } from '@/lib/playerAssignments';
+import { listPlayerConfigs, mergePlayerWithConfig } from '@/lib/playerConfigStore';
 
 function providerIdFromPlayer(player) {
-  return player?.providerId || player?.apiCredentialSetId || player?.spotifyAccountId || '';
+  return getPlayerProviderId(player);
 }
 
 function PlayerCard({ player, provider, playlists, commands }) {
@@ -40,6 +42,7 @@ function PlayerCard({ player, provider, playlists, commands }) {
 
   const invalidateLive = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['players'] });
+    queryClient.invalidateQueries({ queryKey: ['player-configs'] });
     queryClient.invalidateQueries({ queryKey: ['playerCommands'] });
   }, [queryClient]);
 
@@ -217,10 +220,13 @@ function PlayerCard({ player, provider, playlists, commands }) {
 
 export default function NowPlaying() {
   const queryClient = useQueryClient();
-  const { data: players = [] } = useQuery({ queryKey: ['players'], queryFn: () => base44.entities.Player.list('-lastSeen'), refetchInterval: ADMIN_LIVE_REFETCH_INTERVAL_MS, staleTime: 0 });
+  const { data: rawPlayers = [] } = useQuery({ queryKey: ['players'], queryFn: () => base44.entities.Player.list('-lastSeen'), refetchInterval: ADMIN_LIVE_REFETCH_INTERVAL_MS, staleTime: 0 });
+  const { data: configByPlayer = {} } = useQuery({ queryKey: ['player-configs'], queryFn: listPlayerConfigs, refetchInterval: 3000, staleTime: 0 });
   const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: () => base44.entities.Provider.list(), refetchInterval: 5000 });
   const { data: playlists = [] } = useQuery({ queryKey: ['playlists'], queryFn: () => base44.entities.Playlist.list(), refetchInterval: 5000 });
   const { data: commands = [] } = useQuery({ queryKey: ['playerCommands'], queryFn: () => listPlayerCommands(), refetchInterval: ADMIN_LIVE_REFETCH_INTERVAL_MS, staleTime: 0 });
+
+  const players = useMemo(() => rawPlayers.map((player) => mergePlayerWithConfig(player, configByPlayer[player.id])), [rawPlayers, configByPlayer]);
 
   useEffect(() => {
     const run = () => {
