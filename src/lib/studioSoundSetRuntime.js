@@ -36,6 +36,12 @@ export function isRateLimitError(error) {
     || /status code 429|\b429\b|rate limit|too many requests/i.test(error?.message || '');
 }
 
+export function isForbiddenError(error) {
+  return error?.status === 403
+    || error?.response?.status === 403
+    || /status code 403|\b403\b|forbidden/i.test(error?.message || '');
+}
+
 export function isPlayerOnline(player) {
   const timestamp = player?.lastSeen || player?.lastHeartbeatAt || player?.lastStatusUpdate;
   if (!timestamp) return false;
@@ -70,12 +76,21 @@ function rateLimitDiagnosticError(action, error) {
   return diagnostic;
 }
 
+function forbiddenDiagnosticError(action, error) {
+  const diagnostic = new Error(`Runtime Session wurde vom Backend abgelehnt (${action}). Oeffne im Admin den Player-Link/QR-Code neu und lade den Player auf dem Geraet neu.`);
+  diagnostic.errorCode = 'RUNTIME_SESSION_FORBIDDEN';
+  diagnostic.technicalMessage = error?.message || String(error || 'forbidden');
+  diagnostic.suggestedFix = 'Im Admin bei diesem Player auf Player-Link/QR klicken, den neuen Link auf dem Player-Geraet oeffnen und alte Player-Tabs schliessen.';
+  return diagnostic;
+}
+
 async function playerCommandControl(action, payload = {}) {
   let response;
   try {
     response = await base44.functions.invoke('playerCommandControl', { action, payload });
   } catch (error) {
     if (isRateLimitError(error)) throw rateLimitDiagnosticError(`playerCommandControl:${action}`, error);
+    if (isForbiddenError(error)) throw forbiddenDiagnosticError(`playerCommandControl:${action}`, error);
     throw error;
   }
   if (!response.data?.success) {
@@ -151,7 +166,7 @@ export function normalizeSpotifyState(state, player, extra = {}) {
 }
 
 function getStoredPlayerSessionToken(player) {
-  return player?.sessionToken || player?.setupToken || localStorage.getItem('playerSessionToken') || '';
+  return player?.sessionToken || localStorage.getItem('playerSessionToken') || player?.setupToken || '';
 }
 
 export async function publicPlayerRuntime(action, { playerId, sessionToken, payload = {} } = {}) {
@@ -166,6 +181,7 @@ export async function publicPlayerRuntime(action, { playerId, sessionToken, payl
   } catch (error) {
     if (isMissingFunctionError(error)) throw runtimeDiagnosticError(action, error);
     if (isRateLimitError(error)) throw rateLimitDiagnosticError(`publicPlayerRuntime:${action}`, error);
+    if (isForbiddenError(error)) throw forbiddenDiagnosticError(`publicPlayerRuntime:${action}`, error);
     throw error;
   }
 
