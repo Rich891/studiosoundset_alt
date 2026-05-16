@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, CheckCircle2, Copy, ExternalLink, QrCode } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Copy, ExternalLink, QrCode, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 function buildPlayerUrl({ playerId, providerId, providerClientId, zoneId, sessionToken, deviceName }) {
@@ -15,8 +15,8 @@ function buildPlayerUrl({ playerId, providerId, providerClientId, zoneId, sessio
 }
 
 export default function PlayerSetupModal({ open, onOpenChange, playerId, providerId, providerClientId, zoneId, sessionToken, deviceName }) {
-  const canvasRef = useRef(null);
   const [qrError, setQrError] = useState('');
+  const [qrDataUrl, setQrDataUrl] = useState('');
 
   const link = useMemo(() => {
     if (!playerId) return '';
@@ -24,20 +24,35 @@ export default function PlayerSetupModal({ open, onOpenChange, playerId, provide
   }, [playerId, providerId, providerClientId, zoneId, sessionToken, deviceName]);
 
   useEffect(() => {
-    if (!open || !link || !canvasRef.current) return;
-    setQrError('');
-    QRCode.toCanvas(canvasRef.current, link, {
-      width: 240,
-      margin: 2,
-      errorCorrectionLevel: 'M',
-      color: {
-        dark: '#050816',
-        light: '#ffffff',
-      },
-    }).catch((error) => {
-      console.error('QR render failed:', error);
-      setQrError('QR-Code konnte nicht erzeugt werden. Nutze den Kopieren-Button.');
-    });
+    let cancelled = false;
+
+    async function renderQr() {
+      if (!open || !link) {
+        setQrDataUrl('');
+        return;
+      }
+
+      setQrError('');
+      setQrDataUrl('');
+      try {
+        const dataUrl = await QRCode.toDataURL(link, {
+          width: 320,
+          margin: 2,
+          errorCorrectionLevel: 'M',
+          color: {
+            dark: '#050816',
+            light: '#ffffff',
+          },
+        });
+        if (!cancelled) setQrDataUrl(dataUrl);
+      } catch (error) {
+        console.error('QR render failed:', error);
+        if (!cancelled) setQrError('QR-Code konnte nicht erzeugt werden. Nutze den Kopieren-Button.');
+      }
+    }
+
+    renderQr();
+    return () => { cancelled = true; };
   }, [open, link]);
 
   if (!playerId) return null;
@@ -60,8 +75,15 @@ export default function PlayerSetupModal({ open, onOpenChange, playerId, provide
           <DialogTitle className="flex items-center gap-2"><QrCode className="w-5 h-5 text-primary" /> Player per QR verbinden</DialogTitle>
         </DialogHeader>
         <div className="space-y-5">
-          <div className="rounded-2xl border border-border/50 bg-white p-4 mx-auto w-fit shadow-xl">
-            <canvas ref={canvasRef} width={240} height={240} className="block w-60 h-60" aria-label="Player Setup QR Code" />
+          <div className="rounded-2xl border border-border/50 bg-white p-4 mx-auto w-fit shadow-xl min-h-72 min-w-72 flex items-center justify-center">
+            {qrDataUrl ? (
+              <img src={qrDataUrl} alt="Player Setup QR Code" className="block w-72 h-72 object-contain" draggable={false} />
+            ) : (
+              <div className="w-72 h-72 flex flex-col items-center justify-center gap-3 text-slate-500">
+                <RefreshCw className="w-8 h-8 animate-spin" />
+                <span className="text-xs font-semibold">QR-Code wird erzeugt...</span>
+              </div>
+            )}
           </div>
 
           {qrError && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300 flex gap-2"><AlertCircle className="w-4 h-4 flex-shrink-0" />{qrError}</div>}
