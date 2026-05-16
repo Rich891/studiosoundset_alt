@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import {
+  ADMIN_LIVE_REFETCH_INTERVAL_MS,
   COMMAND,
   COMMAND_STATUS,
   createPlayerCommand,
@@ -20,17 +21,45 @@ import {
   markStalePendingCommands,
 } from '@/lib/studioSoundSetRuntime';
 
+function providerIdFromPlayer(player) {
+  return player?.providerId || player?.apiCredentialSetId || player?.spotifyAccountId || '';
+}
+
 function PlayerCard({ player, provider, playlists, commands }) {
   const [actionLoading, setActionLoading] = useState(false);
   const [testPlaylistUri, setTestPlaylistUri] = useState('');
   const queryClient = useQueryClient();
   const tickerRef = useRef(null);
+  const pulseRef = useRef(null);
   const [localProgress, setLocalProgress] = useState(player?.progressMs || 0);
 
   const lastCommand = useMemo(() => {
     const list = commands.filter((cmd) => cmd.playerId === player.id);
     return list.sort((a, b) => new Date(b.createdAt || b.created_date || 0) - new Date(a.createdAt || a.created_date || 0))[0];
   }, [commands, player.id]);
+
+  const invalidateLive = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['players'] });
+    queryClient.invalidateQueries({ queryKey: ['playerCommands'] });
+  }, [queryClient]);
+
+  const startCommandPulse = useCallback(() => {
+    if (pulseRef.current) clearInterval(pulseRef.current);
+    let ticks = 0;
+    invalidateLive();
+    pulseRef.current = setInterval(() => {
+      ticks += 1;
+      invalidateLive();
+      if (ticks >= 12) {
+        clearInterval(pulseRef.current);
+        pulseRef.current = null;
+      }
+    }, 500);
+  }, [invalidateLive]);
+
+  useEffect(() => () => {
+    if (pulseRef.current) clearInterval(pulseRef.current);
+  }, []);
 
   const startTicker = useCallback((startMs) => {
     if (tickerRef.current) clearInterval(tickerRef.current);
@@ -60,15 +89,11 @@ function PlayerCard({ player, provider, playlists, commands }) {
     setActionLoading(true);
     try {
       if (!isPlayerOnline(player)) {
-        toast.error('Player ist offline. Öffne den Player und warte auf Heartbeat.');
+        toast.error('Player ist offline. Oeffne den Player und warte auf Heartbeat.');
       }
       await createPlayerCommand(player, type, payload);
-      toast.success(`${type} gesendet. Warte auf Player-Bestätigung.`);
-      queryClient.invalidateQueries({ queryKey: ['playerCommands'] });
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['players'] });
-        queryClient.invalidateQueries({ queryKey: ['playerCommands'] });
-      }, 2500);
+      toast.success(`${type} gesendet. Warte auf Player-Bestaetigung.`);
+      startCommandPulse();
     } catch (e) {
       toast.error(e.message || 'Command konnte nicht erstellt werden.');
     } finally {
@@ -78,7 +103,7 @@ function PlayerCard({ player, provider, playlists, commands }) {
 
   const handlePlayPlaylist = async (playlistId) => {
     const pl = playlists.find(p => p.id === playlistId);
-    if (!pl?.providerPlaylistUri) return toast.error('Keine Spotify URI für diese Playlist.');
+    if (!pl?.providerPlaylistUri) return toast.error('Keine Spotify URI fuer diese Playlist.');
     await sendCommand(COMMAND.PLAY_PLAYLIST, { playlistId: pl.id, contextUri: pl.providerPlaylistUri });
   };
 
@@ -86,11 +111,12 @@ function PlayerCard({ player, provider, playlists, commands }) {
     const uri = testPlaylistUri.trim();
     if (!uri) return toast.error('Spotify Playlist URI oder Link eintragen.');
     const contextUri = uri.startsWith('spotify:playlist:') ? uri : uri.includes('/playlist/') ? `spotify:playlist:${uri.split('/playlist/')[1].split('?')[0]}` : uri;
-    if (!contextUri.startsWith('spotify:playlist:')) return toast.error('Ungültige Playlist URI.');
+    if (!contextUri.startsWith('spotify:playlist:')) return toast.error('Ungueltige Playlist URI.');
     await sendCommand(COMMAND.PLAY_PLAYLIST, { contextUri });
   };
 
   const online = isPlayerOnline(player);
+  const stale = !online && !!(player.lastSeen || player.lastHeartbeatAt);
   const dur = player?.currentTrackDuration || player?.durationMs || 1;
   const pct = Math.min(100, Math.round((localProgress / dur) * 100));
   const coverUrl = player.currentTrackCoverUrl;
@@ -103,11 +129,11 @@ function PlayerCard({ player, provider, playlists, commands }) {
           <div>
             <p className="font-bold text-sm">{player.name}</p>
             <p className="text-xs text-muted-foreground flex items-center gap-1">
-              {online ? <><Wifi className="w-3 h-3 text-green-400" /> Online</> : <><WifiOff className="w-3 h-3 text-orange-400" /> Offline</>}
+              {online ? <><Wifi className="w-3 h-3 text-green-400" /> Online</> : <><WifiOff className="w-3 h-3 text-orange-400" /> {stale ? 'Stale/Offline' : 'Offline'}</>}
             </p>
           </div>
         </div>
-        <button onClick={() => queryClient.invalidateQueries({ queryKey: ['players'] })} className="text-muted-foreground hover:text-foreground transition-colors" title="Refresh">
+        <button onClick={invalidateLive} className="text-muted-foreground hover:text-foreground transition-colors" title="Refresh">
           <RefreshCw className="w-4 h-4" />
         </button>
       </div>
@@ -191,16 +217,19 @@ function PlayerCard({ player, provider, playlists, commands }) {
 
 export default function NowPlaying() {
   const queryClient = useQueryClient();
-  const { data: players = [] } = useQuery({ queryKey: ['players'], queryFn: () => base44.entities.Player.list('-lastSeen'), refetchInterval: 3000 });
-  const { data: zones = [] } = useQuery({ queryKey: ['zones'], queryFn: () => base44.entities.Zone.list() });
-  const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: () => base44.entities.Provider.list() });
-  const { data: playlists = [] } = useQuery({ queryKey: ['playlists'], queryFn: () => base44.entities.Playlist.list() });
-  const { data: commands = [] } = useQuery({ queryKey: ['playerCommands'], queryFn: () => listPlayerCommands(), refetchInterval: 3000 });
+  const { data: players = [] } = useQuery({ queryKey: ['players'], queryFn: () => base44.entities.Player.list('-lastSeen'), refetchInterval: ADMIN_LIVE_REFETCH_INTERVAL_MS, staleTime: 0 });
+  const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: () => base44.entities.Provider.list(), refetchInterval: 5000 });
+  const { data: playlists = [] } = useQuery({ queryKey: ['playlists'], queryFn: () => base44.entities.Playlist.list(), refetchInterval: 5000 });
+  const { data: commands = [] } = useQuery({ queryKey: ['playerCommands'], queryFn: () => listPlayerCommands(), refetchInterval: ADMIN_LIVE_REFETCH_INTERVAL_MS, staleTime: 0 });
 
   useEffect(() => {
-    players.forEach((player) => markStalePendingCommands(player.id));
-    const t = setTimeout(() => queryClient.invalidateQueries({ queryKey: ['playerCommands'] }), 500);
-    return () => clearTimeout(t);
+    const run = () => {
+      players.forEach((player) => markStalePendingCommands(player.id));
+      queryClient.invalidateQueries({ queryKey: ['playerCommands'] });
+    };
+    run();
+    const id = setInterval(run, 2500);
+    return () => clearInterval(id);
   }, [players, queryClient]);
 
   const onlineCount = players.filter(isPlayerOnline).length;
@@ -216,7 +245,7 @@ export default function NowPlaying() {
               <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center"><Radio className="w-5 h-5 text-rose-400" /></div>
               Now Playing
             </h1>
-            <p className="text-sm text-muted-foreground mt-1 ml-14">Live Player Control mit bestätigten PlayerCommands.</p>
+            <p className="text-sm text-muted-foreground mt-1 ml-14">Live Player Control mit bestaetigten PlayerCommands.</p>
           </div>
         </div>
       </motion.div>
@@ -233,13 +262,12 @@ export default function NowPlaying() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
           {players.map((player, i) => {
-            const zone = zones.find(z => z.id === player.zoneId);
-            const provider = providers.find(p => p.id === (player.providerId || player.apiCredentialSetId || player.spotifyAccountId || zone?.providerId));
-            const providerId = provider?.id || player.providerId || player.apiCredentialSetId || player.spotifyAccountId || '';
+            const providerId = providerIdFromPlayer(player);
+            const provider = providers.find(p => p.id === providerId);
             const playerPlaylists = playlists.filter(p => p.providerId === providerId || p.spotifyAccountId === providerId || p.playerId === player.id);
             return (
               <motion.div key={player.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}>
-                {provider ? <PlayerCard player={player} provider={provider} playlists={playerPlaylists} commands={commands} /> : <div className="bento-panel p-5 text-center"><AlertCircle className="w-8 h-8 text-yellow-400 mx-auto mb-2" /><p className="text-sm font-bold">{player.name}</p><p className="text-xs text-muted-foreground mt-1">Zone oder Provider nicht gefunden</p></div>}
+                {provider ? <PlayerCard player={player} provider={provider} playlists={playerPlaylists} commands={commands} /> : <div className="bento-panel p-5 text-center"><AlertCircle className="w-8 h-8 text-yellow-400 mx-auto mb-2" /><p className="text-sm font-bold">{player.name}</p><p className="text-xs text-muted-foreground mt-1">Provider nicht direkt am Player zugewiesen</p></div>}
               </motion.div>
             );
           })}
