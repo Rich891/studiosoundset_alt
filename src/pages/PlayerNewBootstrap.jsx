@@ -18,11 +18,17 @@ export default function PlayerNewBootstrap() {
     async function bootstrap() {
       const params = new URLSearchParams(window.location.search);
       const stored = readStoredPlayer();
-      const playerId = params.get('playerId') || stored?.id || '';
+      const urlPlayerId = params.get('playerId') || params.get('id') || '';
+      const urlSessionToken = params.get('sessionToken') || params.get('setupToken') || params.get('token') || '';
+      const playerId = urlPlayerId || stored?.id || '';
       const providerId = params.get('providerId') || getPlayerProviderId(stored || {});
       const zoneId = params.get('zoneId') || stored?.zoneId || '';
       const spotifyClientId = params.get('cid') || stored?.spotifyClientId || stored?.clientId || '';
-      const sessionToken = params.get('sessionToken') || params.get('setupToken') || params.get('token') || stored?.sessionToken || stored?.setupToken || '';
+      const sessionToken = urlSessionToken || stored?.sessionToken || stored?.setupToken || localStorage.getItem('playerSessionToken') || '';
+
+      if (urlPlayerId && !urlSessionToken) {
+        localStorage.removeItem('playerSessionToken');
+      }
 
       if (playerId || stored?.id) {
         const merged = {
@@ -33,9 +39,11 @@ export default function PlayerNewBootstrap() {
           ...(providerId ? { providerId, apiCredentialSetId: providerId, spotifyAccountId: providerId } : {}),
           ...(zoneId ? { zoneId } : {}),
           ...(spotifyClientId ? { spotifyClientId, clientId: spotifyClientId } : {}),
-          ...(sessionToken ? { sessionToken, setupToken: stored?.setupToken || sessionToken } : {}),
+          ...(sessionToken ? { sessionToken, setupToken: sessionToken } : {}),
           role: 'player',
           isActive: true,
+          runtimeLoadedFromUrl: Boolean(urlPlayerId && urlSessionToken),
+          runtimeTokenUpdatedAt: urlSessionToken ? new Date().toISOString() : stored?.runtimeTokenUpdatedAt,
         };
         localStorage.setItem('player', JSON.stringify(merged));
         if (sessionToken) localStorage.setItem('playerSessionToken', sessionToken);
