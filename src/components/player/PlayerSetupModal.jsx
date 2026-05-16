@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import QRCode from 'qrcode';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { AlertCircle, CheckCircle2, Copy, ExternalLink, QrCode, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+
+const QR_SCRIPT_ID = 'studiosoundset-qrcode-lib';
+const QR_SCRIPT_SRC = 'https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js';
 
 function buildPlayerUrl({ playerId, providerId, providerClientId, zoneId, sessionToken, deviceName }) {
   const params = new URLSearchParams({ playerId, name: deviceName || 'StudioSoundSet Player' });
@@ -12,6 +14,27 @@ function buildPlayerUrl({ playerId, providerId, providerClientId, zoneId, sessio
   if (zoneId) params.set('zoneId', zoneId);
   if (sessionToken) params.set('sessionToken', sessionToken);
   return `${window.location.origin}/player-new?${params.toString()}`;
+}
+
+function loadQrLibrary() {
+  if (window.QRCode?.toDataURL) return Promise.resolve(window.QRCode);
+
+  return new Promise((resolve, reject) => {
+    const existing = document.getElementById(QR_SCRIPT_ID);
+    if (existing) {
+      existing.addEventListener('load', () => resolve(window.QRCode), { once: true });
+      existing.addEventListener('error', () => reject(new Error('QR library failed to load.')), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = QR_SCRIPT_ID;
+    script.src = QR_SCRIPT_SRC;
+    script.async = true;
+    script.onload = () => window.QRCode?.toDataURL ? resolve(window.QRCode) : reject(new Error('QR library loaded without QRCode export.'));
+    script.onerror = () => reject(new Error('QR library failed to load.'));
+    document.head.appendChild(script);
+  });
 }
 
 export default function PlayerSetupModal({ open, onOpenChange, playerId, providerId, providerClientId, zoneId, sessionToken, deviceName }) {
@@ -35,7 +58,8 @@ export default function PlayerSetupModal({ open, onOpenChange, playerId, provide
       setQrError('');
       setQrDataUrl('');
       try {
-        const dataUrl = await QRCode.toDataURL(link, {
+        const qr = await loadQrLibrary();
+        const dataUrl = await qr.toDataURL(link, {
           width: 320,
           margin: 2,
           errorCorrectionLevel: 'M',
