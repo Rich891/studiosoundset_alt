@@ -19,6 +19,11 @@ export const COMMAND_STATUS = {
 };
 
 export const PLAYER_STALE_AFTER_MS = 10000;
+export const PLAYER_HEARTBEAT_INTERVAL_MS = 2000;
+export const PLAYER_COMMAND_POLL_INTERVAL_MS = 1000;
+export const ADMIN_LIVE_REFETCH_INTERVAL_MS = 1000;
+export const COMMAND_PENDING_TIMEOUT_MS = 12000;
+export const COMMAND_PICKED_UP_TIMEOUT_MS = 20000;
 
 export function nowIso() {
   return new Date().toISOString();
@@ -42,11 +47,11 @@ function isMissingFunctionError(error) {
 
 function runtimeDiagnosticError(action, error) {
   const diagnostic = new Error(
-    `Backend-Funktion publicPlayerRuntime ist in der veröffentlichten Base44-App nicht erreichbar (${action}). GitHub-Code ist vorhanden, aber Base44 hat die Function nicht deployed oder nicht registriert.`
+    `Backend-Funktion publicPlayerRuntime ist in der veroeffentlichten Base44-App nicht erreichbar (${action}). GitHub-Code ist vorhanden, aber Base44 hat die Function nicht deployed oder nicht registriert.`
   );
   diagnostic.errorCode = 'PUBLIC_PLAYER_RUNTIME_NOT_DEPLOYED';
   diagnostic.technicalMessage = error?.message || String(error || 'missing function');
-  diagnostic.suggestedFix = 'publicPlayerRuntime in Base44 Functions deployen/registrieren und danach Player-Link neu öffnen.';
+  diagnostic.suggestedFix = 'publicPlayerRuntime in Base44 Functions deployen/registrieren und danach Player-Link neu oeffnen.';
   return diagnostic;
 }
 
@@ -81,7 +86,11 @@ export async function createPlayerCommand(player, type, payload = {}) {
 
 export async function markStalePendingCommands(playerId) {
   try {
-    await playerCommandControl('markTimeouts', { playerId, timeoutMs: PLAYER_STALE_AFTER_MS });
+    await playerCommandControl('markTimeouts', {
+      playerId,
+      pendingTimeoutMs: COMMAND_PENDING_TIMEOUT_MS,
+      pickedUpTimeoutMs: COMMAND_PICKED_UP_TIMEOUT_MS,
+    });
   } catch (error) {
     console.warn('Could not mark stale commands:', error);
   }
@@ -101,9 +110,9 @@ export function normalizeSpotifyState(state, player, extra = {}) {
   const contextUri = state?.context?.uri || state?.track_window?.current_context?.uri || '';
   return {
     isPlaying: state ? !state.paused : !!extra.isPlaying,
-    progressMs: state?.position || extra.progressMs || 0,
-    currentTrackDuration: track?.duration_ms || extra.durationMs || 0,
-    durationMs: track?.duration_ms || extra.durationMs || 0,
+    progressMs: state?.position ?? extra.progressMs ?? 0,
+    currentTrackDuration: track?.duration_ms || extra.durationMs || extra.currentTrackDuration || 0,
+    durationMs: track?.duration_ms || extra.durationMs || extra.currentTrackDuration || 0,
     currentTrackName: track?.name || extra.currentTrackName || '',
     currentTrackArtist: track?.artists?.map((a) => a.name).join(', ') || extra.currentTrackArtist || '',
     currentTrackAlbum: track?.album?.name || extra.currentTrackAlbum || '',
@@ -205,12 +214,12 @@ export async function syncPlayerStatusFromSdk({ sdkPlayer, player, spotifyDevice
     ...extra,
   });
 
-  await publicPlayerRuntime('heartbeat', {
+  const runtime = await publicPlayerRuntime('heartbeat', {
     playerId: player.id,
     sessionToken: getStoredPlayerSessionToken(player),
     payload: updateData,
   });
-  return { state, updateData };
+  return { state, updateData, runtime };
 }
 
 export function spotifyCommandError(code, humanMessage, technicalMessage) {
