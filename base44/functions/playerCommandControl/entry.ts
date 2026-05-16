@@ -10,6 +10,8 @@ const COMMAND_STATUS = {
 };
 const STORE_KEY = "player_command_store_v1";
 const MAX_COMMANDS = 500;
+const DEFAULT_PENDING_TIMEOUT_MS = 12000;
+const DEFAULT_PICKED_UP_TIMEOUT_MS = 20000;
 
 function json(data: unknown, init?: ResponseInit) {
   return Response.json(data, {
@@ -31,7 +33,7 @@ async function requireAdmin(base44: any) {
   const user = await base44.auth.me().catch(() => null);
   const role = String(user?.role || "").toLowerCase();
   if (!user || !ADMIN_ROLES.has(role)) {
-    throw Object.assign(new Error("Nur Owner/Admin/Staff dürfen PlayerCommands verwalten."), {
+    throw Object.assign(new Error("Nur Owner/Admin/Staff duerfen PlayerCommands verwalten."), {
       status: 403,
       code: "ADMIN_REQUIRED",
     });
@@ -97,37 +99,68 @@ async function createCommand(base44: any, payload: Record<string, any>) {
   const commands = await readCommands(base44);
   const command = normalizeCommand(payload);
   await writeCommands(base44, [command, ...commands]);
-  return { success: true, command };
+  await base44.asServiceRole.entities.Player.update(command.playerId, {
+    lastCommand: command.type,
+    lastCommandStatus: COMMAND_STATUS.PENDING,
+    lastError: "",
+    lastCommandCreatedAt: command.createdAt,
+  }).catch(() => {});
+  return { success: true, command, serverTime: nowIso() };
 }
 
 async function listCommands(base44: any, payload: Record<string, any>) {
   const commands = await readCommands(base44);
   const filtered = payload.playerId ? commands.filter((cmd) => cmd.playerId === payload.playerId) : commands;
-  return { success: true, commands: filtered };
+  return { success: true, commands: filtered, serverTime: nowIso() };
 }
 
 async function markTimeouts(base44: any, payload: Record<string, any>) {
   const playerId = payload.playerId;
-  const timeoutMs = Number(payload.timeoutMs || 10000);
-  const cutoff = Date.now() - timeoutMs;
+  const pendingTimeoutMs = Number(payload.pendingTimeoutMs || payload.timeoutMs || DEFAULT_PENDING_TIMEOUT_MS);
+  const pickedUpTimeoutMs = Number(payload.pickedUpTimeoutMs || Math.max(DEFAULT_PICKED_UP_TIMEOUT_MS, pendingTimeoutMs));
+  const now = Date.now();
   const commands = await readCommands(base44);
+  const timedOutByPlayer = new Map<string, any>();
   let changed = 0;
+
   const updated = commands.map((cmd) => {
     if (playerId && cmd.playerId !== playerId) return cmd;
-    if (cmd.status !== COMMAND_STATUS.PENDING) return cmd;
-    if (new Date(cmd.createdAt || cmd.created_date || 0).getTime() >= cutoff) return cmd;
+    if (![COMMAND_STATUS.PENDING, COMMAND_STATUS.PICKED_UP].includes(cmd.status)) return cmd;
+
+    const referenceTime = cmd.status === COMMAND_STATUS.PICKED_UP
+      ? new Date(cmd.pickedUpAt || cmd.createdAt || cmd.created_date || 0).getTime()
+      : new Date(cmd.createdAt || cmd.created_date || 0).getTime();
+    const timeoutMs = cmd.status === COMMAND_STATUS.PICKED_UP ? pickedUpTimeoutMs : pendingTimeoutMs;
+    if (now - referenceTime < timeoutMs) return cmd;
+
     changed += 1;
-    return {
+    const next = {
       ...cmd,
       status: COMMAND_STATUS.TIMEOUT,
       completedAt: nowIso(),
       errorCode: "COMMAND_TIMEOUT",
-      humanMessage: "The Player did not pick up this command in time. Open the Player screen and wait until it is online.",
-      technicalMessage: "No PlayerCommand pickup before timeout window.",
+      humanMessage: cmd.status === COMMAND_STATUS.PICKED_UP
+        ? "The Player picked up this command but did not confirm it in time."
+        : "The Player did not pick up this command in time. Open the Player screen and wait until it is online.",
+      technicalMessage: cmd.status === COMMAND_STATUS.PICKED_UP
+        ? "Command stayed picked_up beyond timeout window."
+        : "No PlayerCommand pickup before timeout window.",
     };
+    timedOutByPlayer.set(cmd.playerId, next);
+    return next;
   });
-  await writeCommands(base44, updated);
-  return { success: true, changed };
+
+  if (changed > 0) {
+    await writeCommands(base44, updated);
+    await Promise.all([...timedOutByPlayer.entries()].map(([id, cmd]) => base44.asServiceRole.entities.Player.update(id, {
+      lastCommand: cmd.type || cmd.command || "",
+      lastCommandStatus: COMMAND_STATUS.TIMEOUT,
+      lastError: cmd.humanMessage,
+      lastCommandCompletedAt: cmd.completedAt,
+    }).catch(() => {})));
+  }
+
+  return { success: true, changed, serverTime: nowIso() };
 }
 
 Deno.serve(async (req) => {
