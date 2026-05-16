@@ -5,7 +5,7 @@ import { AlertCircle, CheckCircle2, Copy, ExternalLink, QrCode, RefreshCw } from
 import { toast } from 'sonner';
 
 const QR_SCRIPT_ID = 'studiosoundset-qrcode-lib';
-const QR_SCRIPT_SRC = 'https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js';
+const QR_SCRIPT_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
 
 function buildPlayerUrl({ playerId, providerId, providerClientId, zoneId, sessionToken, deviceName }) {
   const params = new URLSearchParams({ playerId, name: deviceName || 'StudioSoundSet Player' });
@@ -17,12 +17,12 @@ function buildPlayerUrl({ playerId, providerId, providerClientId, zoneId, sessio
 }
 
 function loadQrLibrary() {
-  if (window.QRCode?.toDataURL) return Promise.resolve(window.QRCode);
+  if (window.qrcode) return Promise.resolve(window.qrcode);
 
   return new Promise((resolve, reject) => {
     const existing = document.getElementById(QR_SCRIPT_ID);
     if (existing) {
-      existing.addEventListener('load', () => resolve(window.QRCode), { once: true });
+      existing.addEventListener('load', () => window.qrcode ? resolve(window.qrcode) : reject(new Error('QR library missing qrcode export.')), { once: true });
       existing.addEventListener('error', () => reject(new Error('QR library failed to load.')), { once: true });
       return;
     }
@@ -31,10 +31,17 @@ function loadQrLibrary() {
     script.id = QR_SCRIPT_ID;
     script.src = QR_SCRIPT_SRC;
     script.async = true;
-    script.onload = () => window.QRCode?.toDataURL ? resolve(window.QRCode) : reject(new Error('QR library loaded without QRCode export.'));
+    script.onload = () => window.qrcode ? resolve(window.qrcode) : reject(new Error('QR library loaded without qrcode export.'));
     script.onerror = () => reject(new Error('QR library failed to load.'));
     document.head.appendChild(script);
   });
+}
+
+function createQrDataUrl(qrcodeFactory, text) {
+  const qr = qrcodeFactory(0, 'M');
+  qr.addData(text, 'Byte');
+  qr.make();
+  return qr.createDataURL(6, 12);
 }
 
 export default function PlayerSetupModal({ open, onOpenChange, playerId, providerId, providerClientId, zoneId, sessionToken, deviceName }) {
@@ -58,16 +65,8 @@ export default function PlayerSetupModal({ open, onOpenChange, playerId, provide
       setQrError('');
       setQrDataUrl('');
       try {
-        const qr = await loadQrLibrary();
-        const dataUrl = await qr.toDataURL(link, {
-          width: 320,
-          margin: 2,
-          errorCorrectionLevel: 'M',
-          color: {
-            dark: '#050816',
-            light: '#ffffff',
-          },
-        });
+        const qrcodeFactory = await loadQrLibrary();
+        const dataUrl = createQrDataUrl(qrcodeFactory, link);
         if (!cancelled) setQrDataUrl(dataUrl);
       } catch (error) {
         console.error('QR render failed:', error);
