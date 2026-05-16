@@ -58,7 +58,35 @@ function tokenExpiryIso(expiresInSeconds = 3600) {
 }
 function pickPlayerPublic(player: Record<string, any>, runtimeSession?: Record<string, any> | null) {
   const p = applyRuntimeContext(player, runtimeSession);
-  return { id: p.id, name: p.name || "StudioSoundSet Player", email: p.email || "", providerId: p.providerId || "", zoneId: p.zoneId || "", isActive: p.isActive !== false, isOnline: !!p.isOnline, sdkReady: !!p.sdkReady, sdkConnected: !!p.sdkConnected, spotifyDeviceId: p.spotifyDeviceId || "", currentTrackName: p.currentTrackName || "", currentTrackArtist: p.currentTrackArtist || "", currentTrackAlbum: p.currentTrackAlbum || "", currentTrackCoverUrl: p.currentTrackCoverUrl || "", isPlaying: !!p.isPlaying, volume: Number.isFinite(Number(p.volume)) ? Number(p.volume) : 50, lastError: p.lastError || "", lastSeen: p.lastSeen || "", lastHeartbeatAt: p.lastHeartbeatAt || "" };
+  return {
+    id: p.id,
+    name: p.name || "StudioSoundSet Player",
+    email: p.email || "",
+    providerId: p.providerId || "",
+    zoneId: p.zoneId || "",
+    isActive: p.isActive !== false,
+    isOnline: !!p.isOnline,
+    sdkReady: !!p.sdkReady,
+    sdkConnected: !!p.sdkConnected,
+    spotifyDeviceId: p.spotifyDeviceId || "",
+    currentTrackName: p.currentTrackName || "",
+    currentTrackArtist: p.currentTrackArtist || "",
+    currentTrackAlbum: p.currentTrackAlbum || "",
+    currentTrackCoverUrl: p.currentTrackCoverUrl || "",
+    currentTrackUri: p.currentTrackUri || "",
+    currentPlaylistUri: p.currentPlaylistUri || "",
+    progressMs: Number(p.progressMs || 0),
+    durationMs: Number(p.durationMs || p.currentTrackDuration || 0),
+    currentTrackDuration: Number(p.currentTrackDuration || p.durationMs || 0),
+    isPlaying: !!p.isPlaying,
+    volume: Number.isFinite(Number(p.volume)) ? Number(p.volume) : 50,
+    lastCommand: p.lastCommand || "",
+    lastCommandStatus: p.lastCommandStatus || "",
+    lastError: p.lastError || "",
+    lastSeen: p.lastSeen || "",
+    lastHeartbeatAt: p.lastHeartbeatAt || "",
+    lastStatusUpdate: p.lastStatusUpdate || "",
+  };
 }
 function pickProviderPublic(provider: Record<string, any> | null) {
   if (!provider) return null;
@@ -88,7 +116,9 @@ function sanitizeHeartbeat(payload: Record<string, any> = {}, currentPlayer: Rec
   if (Number.isFinite(Number(payload.volume))) updateData.volume = Number(payload.volume);
   else if (Number.isFinite(Number(currentPlayer.volume))) updateData.volume = Number(currentPlayer.volume);
   if (Number.isFinite(Number(payload.progressMs))) updateData.progressMs = Number(payload.progressMs);
+  else if (Number.isFinite(Number(currentPlayer.progressMs))) updateData.progressMs = Number(currentPlayer.progressMs);
   if (Number.isFinite(Number(payload.durationMs))) { updateData.durationMs = Number(payload.durationMs); updateData.currentTrackDuration = Number(payload.durationMs); }
+  else if (Number.isFinite(Number(currentPlayer.durationMs || currentPlayer.currentTrackDuration))) { updateData.durationMs = Number(currentPlayer.durationMs || currentPlayer.currentTrackDuration); updateData.currentTrackDuration = Number(currentPlayer.currentTrackDuration || currentPlayer.durationMs); }
   if (payload.currentTrackUri !== undefined) updateData.currentTrackUri = String(payload.currentTrackUri || "");
   if (payload.currentPlaylistUri !== undefined) updateData.currentPlaylistUri = String(payload.currentPlaylistUri || "");
   if (payload.playbackStateAvailable !== undefined) updateData.playbackStateAvailable = payload.playbackStateAvailable !== false;
@@ -107,7 +137,7 @@ async function validatePlayerSession(base44: any, player: Record<string, any>, s
   if (player.isActive === false) throw Object.assign(new Error("Player ist deaktiviert."), { status: 403, code: "PLAYER_INACTIVE" });
   const runtimeSession = await getRuntimeSession(base44, player.id);
   const validTokens = [player.sessionToken, player.setupToken, runtimeSession?.sessionToken, runtimeSession?.setupToken].filter(Boolean).map(String);
-  if (!validTokens.includes(String(sessionToken))) throw Object.assign(new Error("Player Session ist ungültig. Öffne den aktuellen Player-Link aus dem Admin."), { status: 403, code: "SESSION_TOKEN_INVALID" });
+  if (!validTokens.includes(String(sessionToken))) throw Object.assign(new Error("Player Session ist ungueltig. Oeffne den aktuellen Player-Link aus dem Admin."), { status: 403, code: "SESSION_TOKEN_INVALID" });
   return runtimeSession;
 }
 async function loadProvider(base44: any, player: Record<string, any>, runtimeSession?: Record<string, any> | null) {
@@ -116,7 +146,7 @@ async function loadProvider(base44: any, player: Record<string, any>, runtimeSes
   return await base44.asServiceRole.entities.Provider.get(providerId).catch(() => null);
 }
 async function getProviderAccessToken(base44: any, provider: Record<string, any> | null) {
-  if (!provider) throw Object.assign(new Error("Player hat keinen Provider/API Account. Weise dem Player im Admin einen Spotify Provider zu und öffne danach den neuen Player-Link."), { status: 400, code: "PROVIDER_MISSING" });
+  if (!provider) throw Object.assign(new Error("Player hat keinen Provider/API Account. Weise dem Player im Admin einen Spotify Provider zu und oeffne danach den neuen Player-Link."), { status: 400, code: "PROVIDER_MISSING" });
   if (!tokenExpiresSoon(provider)) return provider.accessToken;
   if (!provider.refreshToken || !provider.clientId) throw Object.assign(new Error("Provider Token fehlt oder ist abgelaufen. Spotify Provider erneut verbinden."), { status: 401, code: "TOKEN_EXPIRED" });
   const response = await fetch(TOKEN_URL, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: provider.refreshToken, client_id: provider.clientId }) });
@@ -142,17 +172,17 @@ async function handleBootstrap(base44: any, player: Record<string, any>, runtime
   if (contextPlayer.providerId && !player.providerId) { patch.providerId = contextPlayer.providerId; patch.apiCredentialSetId = contextPlayer.providerId; patch.spotifyAccountId = contextPlayer.providerId; }
   if (contextPlayer.zoneId && !player.zoneId) patch.zoneId = contextPlayer.zoneId;
   await base44.asServiceRole.entities.Player.update(player.id, patch).catch(() => {});
-  return { success: true, player: pickPlayerPublic({ ...contextPlayer, ...patch }, runtimeSession), provider: pickProviderPublic(provider), zone: zone ? { id: zone.id, name: zone.name || "", providerId: zone.providerId || "" } : null };
+  return { success: true, player: pickPlayerPublic({ ...contextPlayer, ...patch }, runtimeSession), provider: pickProviderPublic(provider), zone: zone ? { id: zone.id, name: zone.name || "", providerId: zone.providerId || "" } : null, serverTime: nowIso() };
 }
-async function handleHeartbeat(base44: any, player: Record<string, any>, payload: Record<string, any>) {
+async function handleHeartbeat(base44: any, player: Record<string, any>, payload: Record<string, any>, runtimeSession?: Record<string, any> | null) {
   const updateData = sanitizeHeartbeat(payload, player);
   await base44.asServiceRole.entities.Player.update(player.id, updateData);
-  return { success: true, playerId: player.id, updatedAt: updateData.lastHeartbeatAt };
+  return { success: true, playerId: player.id, updatedAt: updateData.lastHeartbeatAt, player: pickPlayerPublic({ ...player, ...updateData }, runtimeSession), serverTime: nowIso() };
 }
 async function handleGetAccessToken(base44: any, player: Record<string, any>, runtimeSession?: Record<string, any> | null) {
   const provider = await loadProvider(base44, player, runtimeSession);
   const accessToken = await getProviderAccessToken(base44, provider);
-  return { success: true, accessToken, provider: pickProviderPublic(provider) };
+  return { success: true, accessToken, provider: pickProviderPublic(provider), serverTime: nowIso() };
 }
 async function handlePlayPlaylist(base44: any, player: Record<string, any>, payload: Record<string, any>, runtimeSession?: Record<string, any> | null) {
   const provider = await loadProvider(base44, player, runtimeSession);
@@ -162,18 +192,18 @@ async function handlePlayPlaylist(base44: any, player: Record<string, any>, payl
   if (!deviceId) throw Object.assign(new Error("Spotify Device ID fehlt."), { status: 400, code: "NO_SPOTIFY_DEVICE_ID" });
   if (!contextUri) throw Object.assign(new Error("Playlist URI fehlt."), { status: 400, code: "PLAYLIST_URI_MISSING" });
   await spotifyApi(`/me/player/play?device_id=${encodeURIComponent(deviceId)}`, { method: "PUT", accessToken, body: { context_uri: contextUri, ...(payload.offset ? { offset: payload.offset } : {}) } });
-  return { success: true };
+  return { success: true, serverTime: nowIso() };
 }
 async function handleListPlaylists(base44: any, player: Record<string, any>, runtimeSession?: Record<string, any> | null) {
   const providerId = resolveProviderId(player, runtimeSession);
-  if (!providerId) return { success: true, playlists: [] };
+  if (!providerId) return { success: true, playlists: [], serverTime: nowIso() };
   const byProvider = await base44.asServiceRole.entities.Playlist.filter({ providerId }).catch(() => []);
   const bySpotifyAccount = await base44.asServiceRole.entities.Playlist.filter({ spotifyAccountId: providerId }).catch(() => []);
   const byPlayer = await base44.asServiceRole.entities.Playlist.filter({ playerId: player.id }).catch(() => []);
   const merged = [...byProvider, ...bySpotifyAccount, ...byPlayer];
   const seen = new Set<string>();
   const playlists = merged.filter((playlist: any) => { if (!playlist?.id || seen.has(playlist.id)) return false; seen.add(playlist.id); const playlistProviderId = playlist.providerId || playlist.spotifyAccountId || ""; return !playlist.playerId || playlist.playerId === player.id || playlistProviderId === providerId; }).map(pickPlaylistPublic).sort((a: any, b: any) => String(a.name).localeCompare(String(b.name)));
-  return { success: true, playlists };
+  return { success: true, playlists, serverTime: nowIso() };
 }
 async function handlePollCommands(base44: any, player: Record<string, any>, runtimeSession?: Record<string, any> | null) {
   const providerId = resolveProviderId(player, runtimeSession);
@@ -181,23 +211,30 @@ async function handlePollCommands(base44: any, player: Record<string, any>, runt
   const commands = await readCommands(base44);
   const sorted = commands.filter((cmd: any) => cmd.playerId === player.id && cmd.status === COMMAND_STATUS.PENDING).sort((a: any, b: any) => new Date(a.createdAt || a.created_date || 0).getTime() - new Date(b.createdAt || b.created_date || 0).getTime());
   const command = sorted[0] || null;
-  if (!command) return { success: true, command: null };
+  const heartbeatPatch = { lastSeen: nowIso(), lastHeartbeatAt: nowIso(), isOnline: true };
+  if (!command) {
+    await base44.asServiceRole.entities.Player.update(player.id, heartbeatPatch).catch(() => {});
+    return { success: true, command: null, player: pickPlayerPublic({ ...player, ...heartbeatPatch }, runtimeSession), serverTime: nowIso() };
+  }
   const updatedCommand = { ...command, status: COMMAND_STATUS.PICKED_UP, pickedUpAt: nowIso(), humanMessage: "Player picked up command and is executing it." };
   await writeCommands(base44, commands.map((cmd: any) => cmd.id === command.id ? updatedCommand : cmd));
-  await base44.asServiceRole.entities.Player.update(player.id, { lastSeen: nowIso(), lastHeartbeatAt: nowIso(), isOnline: true, lastCommand: command.type || command.command || "", lastCommandStatus: COMMAND_STATUS.PICKED_UP, lastError: "" });
-  return { success: true, command: { id: updatedCommand.id, playerId: updatedCommand.playerId, providerId: updatedCommand.providerId || providerId || "", zoneId: updatedCommand.zoneId || zoneId || "", type: updatedCommand.type || updatedCommand.command, command: updatedCommand.command || updatedCommand.type, payload: updatedCommand.payload || {}, createdAt: updatedCommand.createdAt || updatedCommand.created_date || "" } };
+  const patch = { ...heartbeatPatch, lastCommand: command.type || command.command || "", lastCommandStatus: COMMAND_STATUS.PICKED_UP, lastError: "" };
+  await base44.asServiceRole.entities.Player.update(player.id, patch);
+  return { success: true, player: pickPlayerPublic({ ...player, ...patch }, runtimeSession), serverTime: nowIso(), command: { id: updatedCommand.id, playerId: updatedCommand.playerId, providerId: updatedCommand.providerId || providerId || "", zoneId: updatedCommand.zoneId || zoneId || "", type: updatedCommand.type || updatedCommand.command, command: updatedCommand.command || updatedCommand.type, payload: updatedCommand.payload || {}, createdAt: updatedCommand.createdAt || updatedCommand.created_date || "" } };
 }
-async function handleCommandResult(base44: any, player: Record<string, any>, payload: Record<string, any>) {
+async function handleCommandResult(base44: any, player: Record<string, any>, payload: Record<string, any>, runtimeSession?: Record<string, any> | null) {
   const commandId = payload.commandId;
   if (!commandId) throw Object.assign(new Error("commandId fehlt."), { status: 400, code: "COMMAND_ID_MISSING" });
   const commands = await readCommands(base44);
   const command = commands.find((cmd: any) => cmd.id === commandId);
-  if (!command || command.playerId !== player.id) throw Object.assign(new Error("Command gehört nicht zu diesem Player."), { status: 403, code: "COMMAND_FORBIDDEN" });
+  if (!command || command.playerId !== player.id) throw Object.assign(new Error("Command gehoert nicht zu diesem Player."), { status: 403, code: "COMMAND_FORBIDDEN" });
   const status = payload.status === COMMAND_STATUS.SUCCESS ? COMMAND_STATUS.SUCCESS : COMMAND_STATUS.FAILED;
-  const updatedCommand = { ...command, status, completedAt: nowIso(), result: payload.result || {}, errorCode: payload.errorCode || "", humanMessage: payload.humanMessage || (status === COMMAND_STATUS.SUCCESS ? "Command confirmed by Player." : "Command failed on Player."), technicalMessage: payload.technicalMessage || "", suggestedFix: payload.suggestedFix || "" };
+  const completedAt = nowIso();
+  const updatedCommand = { ...command, status, completedAt, result: payload.result || {}, errorCode: payload.errorCode || "", humanMessage: payload.humanMessage || (status === COMMAND_STATUS.SUCCESS ? "Command confirmed by Player." : "Command failed on Player."), technicalMessage: payload.technicalMessage || "", suggestedFix: payload.suggestedFix || "" };
   await writeCommands(base44, commands.map((cmd: any) => cmd.id === command.id ? updatedCommand : cmd));
-  await base44.asServiceRole.entities.Player.update(player.id, { lastSeen: nowIso(), lastHeartbeatAt: nowIso(), isOnline: true, lastCommand: command.type || command.command || "", lastCommandStatus: status, lastError: status === COMMAND_STATUS.SUCCESS ? "" : updatedCommand.humanMessage, lastCommandCompletedAt: nowIso() });
-  return { success: true, commandId: command.id, status };
+  const patch = { lastSeen: nowIso(), lastHeartbeatAt: nowIso(), isOnline: true, lastCommand: command.type || command.command || "", lastCommandStatus: status, lastError: status === COMMAND_STATUS.SUCCESS ? "" : updatedCommand.humanMessage, lastCommandCompletedAt: completedAt };
+  await base44.asServiceRole.entities.Player.update(player.id, patch);
+  return { success: true, commandId: command.id, status, player: pickPlayerPublic({ ...player, ...patch }, runtimeSession), serverTime: nowIso() };
 }
 
 Deno.serve(async (req) => {
@@ -212,9 +249,9 @@ Deno.serve(async (req) => {
     const runtimeSession = await validatePlayerSession(base44, player, sessionToken);
     const contextPlayer = applyRuntimeContext(player, runtimeSession);
     if (action === "bootstrap") return json(await handleBootstrap(base44, player, runtimeSession));
-    if (action === "heartbeat") return json(await handleHeartbeat(base44, contextPlayer, payload));
+    if (action === "heartbeat") return json(await handleHeartbeat(base44, contextPlayer, payload, runtimeSession));
     if (action === "pollCommands") return json(await handlePollCommands(base44, contextPlayer, runtimeSession));
-    if (action === "commandResult") return json(await handleCommandResult(base44, contextPlayer, payload));
+    if (action === "commandResult") return json(await handleCommandResult(base44, contextPlayer, payload, runtimeSession));
     if (action === "getAccessToken") return json(await handleGetAccessToken(base44, contextPlayer, runtimeSession));
     if (action === "playPlaylist") return json(await handlePlayPlaylist(base44, contextPlayer, payload, runtimeSession));
     if (action === "listPlaylists") return json(await handleListPlaylists(base44, contextPlayer, runtimeSession));
