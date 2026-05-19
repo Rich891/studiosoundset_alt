@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import qrcode from 'qrcode-generator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { AlertCircle, CheckCircle2, Copy, ExternalLink, QrCode, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-
-const QR_SCRIPT_ID = 'studiosoundset-qrcode-lib';
-const QR_SCRIPT_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
 
 function buildPlayerUrl({ playerId, providerId, providerClientId, zoneId, sessionToken, deviceName }) {
   const params = new URLSearchParams({ playerId, name: deviceName || 'StudioSoundSet Player' });
@@ -16,29 +14,8 @@ function buildPlayerUrl({ playerId, providerId, providerClientId, zoneId, sessio
   return `${window.location.origin}/player-new?${params.toString()}`;
 }
 
-function loadQrLibrary() {
-  if (window.qrcode) return Promise.resolve(window.qrcode);
-
-  return new Promise((resolve, reject) => {
-    const existing = document.getElementById(QR_SCRIPT_ID);
-    if (existing) {
-      existing.addEventListener('load', () => window.qrcode ? resolve(window.qrcode) : reject(new Error('QR library missing qrcode export.')), { once: true });
-      existing.addEventListener('error', () => reject(new Error('QR library failed to load.')), { once: true });
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.id = QR_SCRIPT_ID;
-    script.src = QR_SCRIPT_SRC;
-    script.async = true;
-    script.onload = () => window.qrcode ? resolve(window.qrcode) : reject(new Error('QR library loaded without qrcode export.'));
-    script.onerror = () => reject(new Error('QR library failed to load.'));
-    document.head.appendChild(script);
-  });
-}
-
-function createQrDataUrl(qrcodeFactory, text) {
-  const qr = qrcodeFactory(0, 'M');
+function createQrDataUrl(text) {
+  const qr = qrcode(0, 'M');
   qr.addData(text, 'Byte');
   qr.make();
   return qr.createDataURL(6, 12);
@@ -54,28 +31,20 @@ export default function PlayerSetupModal({ open, onOpenChange, playerId, provide
   }, [playerId, providerId, providerClientId, zoneId, sessionToken, deviceName]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function renderQr() {
-      if (!open || !link) {
-        setQrDataUrl('');
-        return;
-      }
-
-      setQrError('');
+    if (!open || !link) {
       setQrDataUrl('');
-      try {
-        const qrcodeFactory = await loadQrLibrary();
-        const dataUrl = createQrDataUrl(qrcodeFactory, link);
-        if (!cancelled) setQrDataUrl(dataUrl);
-      } catch (error) {
-        console.error('QR render failed:', error);
-        if (!cancelled) setQrError('QR-Code konnte nicht erzeugt werden. Nutze den Kopieren-Button.');
-      }
+      setQrError('');
+      return;
     }
 
-    renderQr();
-    return () => { cancelled = true; };
+    setQrError('');
+    setQrDataUrl('');
+    try {
+      setQrDataUrl(createQrDataUrl(link));
+    } catch (error) {
+      console.error('QR render failed:', error);
+      setQrError('QR-Code konnte nicht erzeugt werden. Nutze den Kopieren-Button.');
+    }
   }, [open, link]);
 
   if (!playerId) return null;
@@ -114,8 +83,8 @@ export default function PlayerSetupModal({ open, onOpenChange, playerId, provide
           <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-3 flex gap-2 text-sm">
             <CheckCircle2 className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
             <div>
-              <p className="font-bold text-green-200">Auf dem Player-Gerät öffnen</p>
-              <p className="text-xs text-muted-foreground mt-1">Scanne diesen QR-Code mit iPad/iPhone/Tablet. Der Link enthält die Runtime Session für genau diesen Player.</p>
+              <p className="font-bold text-green-200">Auf dem Player-Geraet oeffnen</p>
+              <p className="text-xs text-muted-foreground mt-1">Scanne diesen QR-Code mit iPad/iPhone/Tablet. Der Link enthaelt die Runtime Session fuer genau diesen Player.</p>
             </div>
           </div>
 
@@ -138,7 +107,7 @@ export default function PlayerSetupModal({ open, onOpenChange, playerId, provide
 
           <div className="grid grid-cols-2 gap-2">
             <Button variant="outline" size="sm" onClick={copy} className="gap-2"><Copy className="w-4 h-4" /> Link kopieren</Button>
-            <Button variant="outline" size="sm" className="gap-2" onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}><ExternalLink className="w-4 h-4" /> Öffnen</Button>
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}><ExternalLink className="w-4 h-4" /> Oeffnen</Button>
           </div>
         </div>
       </DialogContent>
