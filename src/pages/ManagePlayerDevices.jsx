@@ -42,19 +42,28 @@ export default function ManagePlayerDevices() {
     queryClient.invalidateQueries({ queryKey: ['zones'] });
   };
 
-  const normalizeProviderPatch = (player, providerId, zoneId, backendPlayer = {}) => {
+  const buildAssignmentPatch = (player, providerId, zoneId, backendPlayer = {}) => {
     const provider = providersById[providerId];
+    const sessionToken = backendPlayer.sessionToken || player?.sessionToken || backendPlayer.setupToken || player?.setupToken || '';
+    const setupToken = backendPlayer.setupToken || player?.setupToken || sessionToken;
     return {
-      ...player,
-      ...backendPlayer,
       providerId,
       apiCredentialSetId: providerId,
       spotifyAccountId: providerId,
-      spotifyClientId: provider?.clientId || player?.spotifyClientId || backendPlayer?.spotifyClientId || '',
+      spotifyClientId: provider?.clientId || backendPlayer?.spotifyClientId || player?.spotifyClientId || '',
       zoneId: zoneId || '',
+      sessionToken,
+      setupToken,
+      isActive: true,
       updatedAt: new Date().toISOString(),
     };
   };
+
+  const normalizeProviderPatch = (player, providerId, zoneId, backendPlayer = {}) => ({
+    ...player,
+    ...backendPlayer,
+    ...buildAssignmentPatch(player, providerId, zoneId, backendPlayer),
+  });
 
   const persistPlayerAssignment = async (player, providerId, zoneId, options = {}) => {
     if (!player?.id) throw new Error('Player fehlt.');
@@ -74,12 +83,13 @@ export default function ManagePlayerDevices() {
       throw new Error(response.data?.error || 'Runtime Session konnte nicht im Backend gespeichert werden.');
     }
 
-    const verified = normalizeProviderPatch(player, providerId, zoneId, response.data.player);
-    if (!verified.sessionToken && !verified.setupToken) {
+    const assignmentPatch = buildAssignmentPatch(player, providerId, zoneId, response.data.player);
+    if (!assignmentPatch.sessionToken && !assignmentPatch.setupToken) {
       throw new Error('Runtime Session konnte nicht am Player gespeichert werden. Kein Player-Link wird erzeugt.');
     }
 
-    return verified;
+    await base44.entities.Player.update(player.id, assignmentPatch);
+    return normalizeProviderPatch(player, providerId, zoneId, { ...response.data.player, ...assignmentPatch });
   };
 
   const createMutation = useMutation({
@@ -95,6 +105,7 @@ export default function ManagePlayerDevices() {
       });
       if (!response.data?.success) throw new Error(response.data?.error || 'Player konnte nicht erstellt werden.');
       const player = normalizeProviderPatch(response.data.playerUser, providerId, data.zoneId || '', response.data.playerUser);
+      await base44.entities.Player.update(player.id, buildAssignmentPatch(player, providerId, data.zoneId || '', player));
       return persistPlayerAssignment(player, providerId, data.zoneId || '');
     },
     onSuccess: (player) => {
@@ -174,7 +185,7 @@ export default function ManagePlayerDevices() {
   return (
     <div className="p-4 lg:p-8 space-y-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between gap-4 flex-wrap"><div><h1 className="text-2xl font-black">Players</h1><p className="text-sm text-muted-foreground mt-1">Provider/API gehoert direkt an den Player. Zonen sind nur optionale Raeume und Default-Werte.</p></div><Button onClick={() => setShowDialog(true)} className="gap-2 bg-primary hover:bg-primary/90"><Plus className="w-4 h-4" />Neuer Player</Button></div>
-      <div className="bento-panel p-5 border-cyan-500/20 bg-cyan-500/5"><div className="flex gap-3"><PlugZap className="w-5 h-5 text-cyan-300 mt-0.5 flex-shrink-0" /><div className="space-y-1 text-sm"><p className="font-black text-cyan-200">Backend ist die einzige Wahrheit</p><p className="text-muted-foreground">Provider verbinden -> Player erstellen/zuweisen -> Player-Link oeffnen. Runtime Sessions werden nur ueber playerAdminControl gespeichert. Es gibt keine lokalen Player-Konfigurations-Fallbacks mehr.</p></div></div></div>
+      <div className="bento-panel p-5 border-cyan-500/20 bg-cyan-500/5"><div className="flex gap-3"><PlugZap className="w-5 h-5 text-cyan-300 mt-0.5 flex-shrink-0" /><div className="space-y-1 text-sm"><p className="font-black text-cyan-200">Backend ist die einzige Wahrheit</p><p className="text-muted-foreground">Provider verbinden -> Player erstellen/zuweisen -> Player-Link oeffnen. Runtime Sessions werden ueber playerAdminControl erzeugt und danach direkt am Player gespeichert.</p></div></div></div>
       {playerError && <div className="bento-panel border-red-500/20 bg-red-500/5 p-4 text-sm text-red-300">Player konnten nicht geladen werden: {playerError.message}</div>}
       {connectedProviders.length === 0 && <div className="bento-panel border-yellow-500/20 bg-yellow-500/5 p-5 flex items-center gap-3"><AlertCircle className="w-5 h-5 text-yellow-400" /><p className="text-sm text-yellow-300">Keine verbundene API-Verbindung. Erstelle und verbinde zuerst einen Spotify Provider.</p></div>}
       {playersMissingApi.length > 0 && <div className="bento-panel border-yellow-500/20 bg-yellow-500/5 p-5 flex items-start gap-3"><Wrench className="w-5 h-5 text-yellow-400 mt-0.5" /><div><p className="font-bold text-yellow-200">{playersMissingApi.length} Player brauchen eine API-Zuweisung</p><p className="text-sm text-yellow-300/80">Oeffne Zuweisung bearbeiten, waehle einen Provider und oeffne danach den neuen Player-Link.</p></div></div>}
