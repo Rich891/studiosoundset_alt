@@ -142,25 +142,47 @@ export async function getLastCommandForPlayer(playerId) {
 }
 
 export function normalizeSpotifyState(state, player, extra = {}) {
+  const timestamp = nowIso();
   const track = state?.track_window?.current_track;
-  const contextUri = state?.context?.uri || state?.track_window?.current_context?.uri || '';
+  const artist = track?.artists?.map((a) => a.name).join(', ') || extra.currentTrackArtist || extra.currentArtist || '';
+  const album = track?.album?.name || extra.currentTrackAlbum || extra.currentAlbum || '';
+  const coverUrl = track?.album?.images?.[0]?.url || extra.currentTrackCoverUrl || extra.currentCoverUrl || '';
+  const trackName = track?.name || extra.currentTrackName || extra.currentTrack || '';
+  const durationMs = track?.duration_ms || extra.durationMs || extra.currentTrackDuration || 0;
+  const positionMs = state?.position ?? extra.positionMs ?? extra.progressMs ?? 0;
+  const contextUri = state?.context?.uri || state?.track_window?.current_context?.uri || extra.currentContextUri || extra.currentPlaylistUri || '';
+  const isPlaying = state ? !state.paused : !!extra.isPlaying;
+  const volume = Number.isFinite(Number(extra.currentVolume ?? extra.volume)) ? Number(extra.currentVolume ?? extra.volume) : player?.volume || 50;
+
   return {
-    isPlaying: state ? !state.paused : !!extra.isPlaying,
-    progressMs: state?.position ?? extra.progressMs ?? 0,
-    currentTrackDuration: track?.duration_ms || extra.durationMs || extra.currentTrackDuration || 0,
-    durationMs: track?.duration_ms || extra.durationMs || extra.currentTrackDuration || 0,
-    currentTrackName: track?.name || extra.currentTrackName || '',
-    currentTrackArtist: track?.artists?.map((a) => a.name).join(', ') || extra.currentTrackArtist || '',
-    currentTrackAlbum: track?.album?.name || extra.currentTrackAlbum || '',
-    currentTrackCoverUrl: track?.album?.images?.[0]?.url || extra.currentTrackCoverUrl || '',
+    isPlaying,
+    progressMs: positionMs,
+    positionMs,
+    currentPositionMs: positionMs,
+    currentTrackDuration: durationMs,
+    durationMs,
+    currentDurationMs: durationMs,
+    currentTrackName: trackName,
+    currentTrack: trackName,
+    currentTrackTitle: trackName,
+    currentTrackArtist: artist,
+    currentArtist: artist,
+    currentTrackAlbum: album,
+    currentAlbum: album,
+    currentTrackCoverUrl: coverUrl,
+    currentCoverUrl: coverUrl,
+    coverUrl,
     currentTrackUri: track?.uri || extra.currentTrackUri || '',
-    currentPlaylistUri: contextUri || extra.currentPlaylistUri || '',
+    currentPlaylistUri: contextUri,
+    currentContextUri: contextUri,
     playbackStateAvailable: !!state,
-    lastStatusUpdate: nowIso(),
-    lastSeen: nowIso(),
-    lastHeartbeatAt: nowIso(),
+    lastStatusUpdate: timestamp,
+    lastSeen: timestamp,
+    lastHeartbeatAt: timestamp,
     isOnline: true,
     sdkLoaded: true,
+    currentVolume: volume,
+    volume,
     ...extra,
   };
 }
@@ -233,7 +255,7 @@ export async function syncPlayerStatusFromSdk({ sdkPlayer, player, spotifyDevice
     console.warn('getCurrentState failed:', error);
   }
 
-  let volume = extra.volume;
+  let volume = extra.volume ?? extra.currentVolume;
   try {
     if (sdkPlayer?.getVolume) {
       const sdkVolume = await sdkPlayer.getVolume();
@@ -246,9 +268,12 @@ export async function syncPlayerStatusFromSdk({ sdkPlayer, player, spotifyDevice
   const effectiveSdkConnected = Boolean(sdkConnected || extra.sdkConnected || effectiveSdkReady);
   const updateData = normalizeSpotifyState(state, player, {
     spotifyDeviceId: effectiveDeviceId,
+    deviceId: effectiveDeviceId,
     sdkReady: effectiveSdkReady,
     sdkConnected: effectiveSdkConnected,
-    volume: Number.isFinite(volume) ? volume : player.volume || 50,
+    sdkLoaded: true,
+    currentVolume: Number.isFinite(Number(volume)) ? Number(volume) : player.currentVolume || player.volume || 50,
+    volume: Number.isFinite(Number(volume)) ? Number(volume) : player.currentVolume || player.volume || 50,
     ...extra,
   });
 
