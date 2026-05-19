@@ -22,13 +22,10 @@ import Settings from './pages/Settings';
 import NetworkSettings from './pages/NetworkSettings';
 import Commands from './pages/Commands';
 import NotFound from './pages/NotFound';
-import Player from './pages/Player';
 import PlayerNewBootstrap from './pages/PlayerNewBootstrap';
-import AddPlayerDevice from './pages/AddPlayerDevice';
-import PlayerPairing from './pages/PlayerPairing';
 import ManagePlayerDevices from './pages/ManagePlayerDevices';
 
-const PUBLIC_PREFIXES = ['/', '/spotify-callback', '/player-pairing', '/player-new', '/player-login'];
+const PUBLIC_PREFIXES = ['/', '/spotify-callback', '/player', '/player-pairing', '/player-new', '/player-login'];
 
 function normalizePath(pathname = '/') {
   if (!pathname) return '/';
@@ -53,9 +50,10 @@ const AuthenticatedApp = () => {
       <Routes>
         <Route path="/" element={<PublicLogin />} />
         <Route path="/spotify-callback" element={<SpotifyCallback />} />
-        <Route path="/player-pairing" element={<PlayerPairing />} />
+        <Route path="/player" element={<PlayerNewBootstrap />} />
         <Route path="/player-new" element={<PlayerNewBootstrap />} />
         <Route path="/player-login" element={<Navigate to="/player-new" replace />} />
+        <Route path="/player-pairing" element={<Navigate to="/player-new" replace />} />
       </Routes>
     );
   }
@@ -89,8 +87,7 @@ const AuthenticatedApp = () => {
         <Route path="/logs" element={<Logs />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/settings/network" element={<NetworkSettings />} />
-        <Route path="/player" element={<Player />} />
-        <Route path="/add-player-device" element={<AddPlayerDevice />} />
+        <Route path="/add-player-device" element={<Navigate to="/manage-players" replace />} />
         <Route path="/manage-players" element={<ManagePlayerDevices />} />
       </Route>
       <Route path="*" element={<NotFound />} />
