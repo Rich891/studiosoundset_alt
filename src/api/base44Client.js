@@ -1,6 +1,5 @@
 import { createClient } from '@base44/sdk';
 import { appParams } from '@/lib/app-params';
-import { getUsableSpotifyAccessToken, spotifyApiRequest } from '@/lib/spotifyPkceAuth';
 
 const { appId, token, functionsVersion, appBaseUrl } = appParams;
 
@@ -13,248 +12,29 @@ const client = createClient({
   appBaseUrl,
 });
 
-const COMMAND_STORE_KEY = 'sss_command_store_fallback_v1';
-const COMMAND_STATUS = { PENDING: 'pending', PICKED_UP: 'picked_up', SUCCESS: 'success', FAILED: 'failed', TIMEOUT: 'timeout' };
-
-function slugify(value = 'player') {
-  return String(value)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'player';
-}
-
-function randomToken(prefix = 'token') {
-  const random = new Uint8Array(24);
-  crypto.getRandomValues(random);
-  const value = Array.from(random, (byte) => byte.toString(16).padStart(2, '0')).join('');
-  return `${prefix}_${value}`;
-}
-
-function makePlayerEmail(name) {
-  const suffix = Math.random().toString(36).slice(2, 8);
-  return `${slugify(name)}-${suffix}@studiosoundset.player`;
-}
-
-function makeSessionToken(player) {
-  return player.sessionToken || player.setupToken || randomToken(`player_${player.id}`);
-}
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function readLocalCommandStore() {
-  try { return JSON.parse(localStorage.getItem(COMMAND_STORE_KEY)) || []; }
-  catch { return []; }
-}
-
-function writeLocalCommandStore(commands) {
-  const trimmed = [...commands]
-    .sort((a, b) => new Date(b.createdAt || b.created_date || 0) - new Date(a.createdAt || a.created_date || 0))
-    .slice(0, 300);
-  localStorage.setItem(COMMAND_STORE_KEY, JSON.stringify(trimmed));
-  return trimmed;
-}
-
-async function playerCommandControlFallback(payload = {}) {
-  const action = payload.action || 'list';
-  const data = payload.payload || payload;
-  const commands = readLocalCommandStore();
-
-  if (action === 'list') {
-    const filtered = data.playerId ? commands.filter((cmd) => cmd.playerId === data.playerId) : commands;
-    return { data: { success: true, commands: filtered, fallback: true } };
-  }
-
-  if (action === 'create') {
-    if (!data.playerId) throw new Error('playerId fehlt.');
-    const type = data.type || data.command;
-    if (!type) throw new Error('Command type fehlt.');
-    const createdAt = nowIso();
-    const command = {
-      id: crypto.randomUUID(),
-      playerId: data.playerId,
-      providerId: data.providerId || '',
-      zoneId: data.zoneId || '',
-      type,
-      command: type,
-      payload: data.payload || {},
-      status: COMMAND_STATUS.PENDING,
-      createdAt,
-      created_date: createdAt,
-      humanMessage: data.humanMessage || 'Command sent locally. Backend command function is not deployed yet.',
-      pickedUpAt: '',
-      completedAt: '',
-      errorCode: 'COMMAND_BACKEND_FALLBACK',
-    };
-    writeLocalCommandStore([command, ...commands]);
-    return { data: { success: true, command, fallback: true } };
-  }
-
-  if (action === 'markTimeouts') {
-    const cutoff = Date.now() - Number(data.timeoutMs || 10000);
-    let changed = 0;
-    const updated = commands.map((cmd) => {
-      if (data.playerId && cmd.playerId !== data.playerId) return cmd;
-      if (cmd.status !== COMMAND_STATUS.PENDING) return cmd;
-      if (new Date(cmd.createdAt || cmd.created_date || 0).getTime() >= cutoff) return cmd;
-      changed += 1;
-      return { ...cmd, status: COMMAND_STATUS.TIMEOUT, completedAt: nowIso(), errorCode: 'COMMAND_TIMEOUT', humanMessage: 'The Player did not pick up this command in time.' };
-    });
-    writeLocalCommandStore(updated);
-    return { data: { success: true, changed, fallback: true } };
-  }
-
-  throw new Error(`Base44 Function playerCommandControl fehlt und es gibt keinen Fallback für action=${action}.`);
-}
-
-async function getProvider(accountId) {
-  if (!accountId) throw new Error('Spotify Provider ID fehlt.');
-  return client.entities.Provider.get(accountId);
-}
-
-async function getAccessTokenForProvider(accountId) {
-  const provider = await getProvider(accountId);
-  const accessToken = await getUsableSpotifyAccessToken(provider, async (id, patch) => {
-    await client.entities.Provider.update(id, patch);
-  });
-  return { provider, accessToken };
-}
-
-async function spotifyAccountControlFallback(payload = {}) {
-  const { action, accountId, deviceId, contextUri, offset } = payload;
-  if (!action) throw new Error('spotifyAccountControl action fehlt.');
-  const { accessToken } = await getAccessTokenForProvider(accountId);
-
-  if (action === 'getAccessToken') {
-    return { data: { success: true, accessToken } };
-  }
-
-  if (action === 'transferPlayback') {
-    await spotifyApiRequest('/me/player', {
-      method: 'PUT',
-      accessToken,
-      body: { device_ids: [deviceId], play: false },
-    });
-    return { data: { success: true } };
-  }
-
-  if (action === 'playPlaylist') {
-    if (!deviceId) throw new Error('Spotify Device ID fehlt.');
-    if (!contextUri) throw new Error('Spotify Playlist URI fehlt.');
-    await spotifyApiRequest(`/me/player/play?device_id=${encodeURIComponent(deviceId)}`, {
-      method: 'PUT',
-      accessToken,
-      body: { context_uri: contextUri, ...(offset ? { offset } : {}) },
-    });
-    return { data: { success: true } };
-  }
-
-  if (action === 'getDevices') {
-    const data = await spotifyApiRequest('/me/player/devices', { accessToken });
-    return { data: { success: true, devices: data.devices || [] } };
-  }
-
-  if (action === 'getUserPlaylists') {
-    const playlists = [];
-    let offsetValue = 0;
-    let total = 0;
-    do {
-      const data = await spotifyApiRequest(`/me/playlists?limit=50&offset=${offsetValue}`, { accessToken });
-      playlists.push(...(data.items || []));
-      total = data.total || playlists.length;
-      offsetValue += data.limit || 50;
-      if (!data.next) break;
-    } while (playlists.length < total);
-    return { data: { success: true, playlists, total } };
-  }
-
-  throw new Error(`Base44 Function spotifyAccountControl fehlt und es gibt keinen Fallback für action=${action}.`);
-}
-
-async function createPlayerUserFallback(payload = {}) {
-  const name = payload.name?.trim();
-  const providerId = payload.providerId;
-  const passwordHash = payload.passwordHash?.trim();
-  if (!name) throw new Error('Player Name fehlt.');
-  if (!providerId) throw new Error('Spotify Provider fehlt.');
-  if (!passwordHash) throw new Error('Player Passwort fehlt.');
-
-  const setupToken = randomToken('setup');
-  const sessionToken = randomToken('session');
-  const playerPayload = {
-    name,
-    email: payload.email || makePlayerEmail(name),
-    passwordHash,
-    providerId,
-    zoneId: payload.zoneId || '',
-    role: 'player',
-    status: 'inactive',
-    isActive: true,
-    isOnline: false,
-    isPaired: false,
-    sdkLoaded: false,
-    sdkReady: false,
-    sdkConnected: false,
-    spotifyDeviceId: '',
-    setupToken,
-    sessionToken,
-    lastCommand: '',
-    lastCommandStatus: '',
-    lastError: '',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  const playerUser = await client.entities.Player.create(playerPayload);
-  return { data: { success: true, playerUser, fallback: true } };
-}
-
-async function playerAuthLoginFallback(payload = {}) {
-  const email = payload.email?.trim();
-  const password = payload.password?.trim();
-  if (!email || !password) return { data: { success: false, error: 'Email und Passwort erforderlich.' } };
-
-  const matches = await client.entities.Player.filter({ email });
-  const player = (matches || []).find((candidate) => candidate.passwordHash === password && candidate.isActive !== false);
-  if (!player) return { data: { success: false, error: 'Player Login ungültig oder Player deaktiviert.' } };
-
-  const sessionToken = makeSessionToken(player);
-  const patch = {
-    sessionToken,
-    status: 'online',
-    isOnline: true,
-    lastSeen: new Date().toISOString(),
-    lastHeartbeatAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  await client.entities.Player.update(player.id, patch).catch(() => {});
-
-  return {
-    data: {
-      success: true,
-      sessionToken,
-      player: { ...player, ...patch },
-      fallback: true,
-    },
-  };
-}
-
 function isFunctionMissingError(error) {
-  return error?.status === 404 || error?.response?.status === 404 || /status code 404|not found/i.test(error?.message || '');
+  return error?.status === 404
+    || error?.response?.status === 404
+    || /status code 404|not found/i.test(error?.message || '');
+}
+
+function createMissingFunctionError(name, error) {
+  const wrapped = new Error(`Backend-Funktion ${name} ist nicht deployed oder nicht registriert. Keine lokalen Browser-Fallbacks aktiv.`);
+  wrapped.errorCode = 'BACKEND_FUNCTION_NOT_DEPLOYED';
+  wrapped.technicalMessage = error?.message || String(error || 'missing function');
+  wrapped.humanMessage = `Die Backend-Funktion ${name} fehlt. StudioSoundSet simuliert keine Commands, Logins oder Spotify-Aktionen im Browser.`;
+  wrapped.suggestedFix = `Base44 Function ${name} deployen/registrieren und die App neu publishen.`;
+  return wrapped;
 }
 
 const originalInvoke = client.functions.invoke.bind(client.functions);
+
 client.functions.invoke = async (name, payload) => {
   try {
     return await originalInvoke(name, payload);
   } catch (error) {
     if (isFunctionMissingError(error)) {
-      if (name === 'spotifyAccountControl') return spotifyAccountControlFallback(payload);
-      if (name === 'createPlayerUserNew') return createPlayerUserFallback(payload);
-      if (name === 'playerAuthLogin') return playerAuthLoginFallback(payload);
-      if (name === 'playerCommandControl') return playerCommandControlFallback(payload);
+      throw createMissingFunctionError(name, error);
     }
     throw error;
   }
