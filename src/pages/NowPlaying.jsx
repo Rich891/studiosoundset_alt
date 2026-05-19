@@ -21,7 +21,6 @@ import {
   markStalePendingCommands,
 } from '@/lib/studioSoundSetRuntime';
 import { getPlayerProviderId } from '@/lib/playerAssignments';
-import { listPlayerConfigs, mergePlayerWithConfig } from '@/lib/playerConfigStore';
 
 function PlayerCard({ player, provider, playlists, commands }) {
   const [actionLoading, setActionLoading] = useState(false);
@@ -36,7 +35,6 @@ function PlayerCard({ player, provider, playlists, commands }) {
 
   const invalidateLive = () => {
     queryClient.invalidateQueries({ queryKey: ['players'] });
-    queryClient.invalidateQueries({ queryKey: ['player-configs'] });
     queryClient.invalidateQueries({ queryKey: ['playerCommands'] });
   };
 
@@ -49,7 +47,7 @@ function PlayerCard({ player, provider, playlists, commands }) {
       setTimeout(invalidateLive, 1200);
       setTimeout(invalidateLive, 3500);
     } catch (e) {
-      toast.error(e.message || 'Command konnte nicht erstellt werden.');
+      toast.error(e.humanMessage || e.message || 'Command konnte nicht erstellt werden.');
     } finally {
       setActionLoading(false);
     }
@@ -75,7 +73,7 @@ function PlayerCard({ player, provider, playlists, commands }) {
 
   const online = isPlayerOnline(player);
   const duration = player.currentTrackDuration || player.durationMs || 0;
-  const progress = player.progressMs || 0;
+  const progress = player.progressMs || player.positionMs || 0;
   const progressPct = duration ? Math.min(100, Math.round((progress / duration) * 100)) : 0;
   const coverUrl = player.currentTrackCoverUrl;
 
@@ -151,9 +149,9 @@ function PlayerCard({ player, provider, playlists, commands }) {
 
         <div className="rounded-lg border border-border/40 bg-background/50 p-3 text-xs space-y-1">
           <p className="flex items-center gap-1 text-muted-foreground"><Clock className="w-3 h-3" /> Letzter Command</p>
-          <p className="font-semibold">{lastCommand?.type || lastCommand?.command || player.lastCommand || '—'}</p>
+          <p className="font-semibold">{lastCommand?.type || lastCommand?.command || player.lastCommand || '-'}</p>
           <p className={lastCommand?.status === COMMAND_STATUS.SUCCESS ? 'text-green-400' : lastCommand?.status === COMMAND_STATUS.FAILED || lastCommand?.status === COMMAND_STATUS.TIMEOUT ? 'text-red-400' : 'text-yellow-300'}>
-            {lastCommand?.status || player.lastCommandStatus || '—'}
+            {lastCommand?.status || player.lastCommandStatus || '-'}
           </p>
           {(lastCommand?.humanMessage || lastCommand?.errorCode || player.lastError) && <p className="text-muted-foreground break-words">{lastCommand?.errorCode ? `${lastCommand.errorCode}: ` : ''}{lastCommand?.humanMessage || player.lastError}</p>}
         </div>
@@ -164,13 +162,11 @@ function PlayerCard({ player, provider, playlists, commands }) {
 
 export default function NowPlaying() {
   const queryClient = useQueryClient();
-  const { data: rawPlayers = [] } = useQuery({ queryKey: ['players'], queryFn: () => base44.entities.Player.list('-lastSeen'), refetchInterval: ADMIN_LIVE_REFETCH_INTERVAL_MS, staleTime: 1000, retry: 1 });
-  const { data: configByPlayer = {} } = useQuery({ queryKey: ['player-configs'], queryFn: listPlayerConfigs, refetchInterval: 10000, staleTime: 5000 });
+  const { data: players = [] } = useQuery({ queryKey: ['players'], queryFn: () => base44.entities.Player.list('-lastSeen'), refetchInterval: ADMIN_LIVE_REFETCH_INTERVAL_MS, staleTime: 1000, retry: 1 });
   const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: () => base44.entities.Provider.list(), refetchInterval: 15000, staleTime: 10000, retry: 1 });
   const { data: playlists = [] } = useQuery({ queryKey: ['playlists'], queryFn: () => base44.entities.Playlist.list(), refetchInterval: 15000, staleTime: 10000, retry: 1 });
   const { data: commands = [] } = useQuery({ queryKey: ['playerCommands'], queryFn: () => listPlayerCommands(), refetchInterval: ADMIN_LIVE_REFETCH_INTERVAL_MS, staleTime: 1000, retry: 1 });
 
-  const players = useMemo(() => rawPlayers.map((player) => mergePlayerWithConfig(player, configByPlayer[player.id])), [rawPlayers, configByPlayer]);
   const playerIds = useMemo(() => players.map((player) => player.id).filter(Boolean).join('|'), [players]);
 
   useEffect(() => {
@@ -222,7 +218,7 @@ export default function NowPlaying() {
         <div className="space-y-2 max-h-96 overflow-y-auto">
           {commands.slice(0, 30).map((cmd) => {
             const player = players.find((item) => item.id === cmd.playerId);
-            return <div key={cmd.id} className="grid grid-cols-2 md:grid-cols-7 gap-2 rounded-lg bg-background/50 border border-border/30 p-3 text-xs"><span className="font-semibold">{cmd.type || cmd.command}</span><span>{player?.name || cmd.playerId}</span><span>{cmd.status}</span><span>{cmd.createdAt || cmd.created_date}</span><span>{cmd.pickedUpAt || '—'}</span><span>{cmd.completedAt || '—'}</span><span className="text-muted-foreground break-words">{cmd.errorCode || cmd.humanMessage || '—'}</span></div>;
+            return <div key={cmd.id} className="grid grid-cols-2 md:grid-cols-7 gap-2 rounded-lg bg-background/50 border border-border/30 p-3 text-xs"><span className="font-semibold">{cmd.type || cmd.command}</span><span>{player?.name || cmd.playerId}</span><span>{cmd.status}</span><span>{cmd.createdAt || cmd.created_date}</span><span>{cmd.pickedUpAt || '-'}</span><span>{cmd.completedAt || '-'}</span><span className="text-muted-foreground break-words">{cmd.errorCode || cmd.humanMessage || '-'}</span></div>;
           })}
           {commands.length === 0 && <p className="text-sm text-muted-foreground">Noch keine Commands.</p>}
         </div>
