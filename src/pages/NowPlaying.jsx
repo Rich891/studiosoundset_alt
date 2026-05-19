@@ -16,16 +16,17 @@ import {
   COMMAND_STATUS,
   createPlayerCommand,
   formatMs,
-  isPlayerOnline,
   listPlayerCommands,
   markStalePendingCommands,
 } from '@/lib/studioSoundSetRuntime';
 import { getPlayerProviderId } from '@/lib/playerAssignments';
+import { normalizePlayerLiveState } from '@/lib/playerLiveState';
 
 function PlayerCard({ player, provider, playlists, commands }) {
   const [actionLoading, setActionLoading] = useState(false);
   const [testPlaylistUri, setTestPlaylistUri] = useState('');
   const queryClient = useQueryClient();
+  const live = normalizePlayerLiveState(player);
 
   const lastCommand = useMemo(() => {
     return commands
@@ -41,7 +42,7 @@ function PlayerCard({ player, provider, playlists, commands }) {
   const sendCommand = async (type, payload = {}) => {
     setActionLoading(true);
     try {
-      if (!isPlayerOnline(player)) toast.error('Player ist offline. Oeffne den Player und warte auf Heartbeat.');
+      if (!live.online) toast.error('Player ist offline. Oeffne den Player und warte auf Heartbeat.');
       await createPlayerCommand(player, type, payload);
       toast.success(`${type} gesendet. Warte auf Player-Bestaetigung.`);
       setTimeout(invalidateLive, 1200);
@@ -71,21 +72,15 @@ function PlayerCard({ player, provider, playlists, commands }) {
     await sendCommand(COMMAND.PLAY_PLAYLIST, { contextUri });
   };
 
-  const online = isPlayerOnline(player);
-  const duration = player.currentTrackDuration || player.durationMs || 0;
-  const progress = player.progressMs || player.positionMs || 0;
-  const progressPct = duration ? Math.min(100, Math.round((progress / duration) * 100)) : 0;
-  const coverUrl = player.currentTrackCoverUrl;
-
   return (
     <div className="bento-panel overflow-hidden">
       <div className="p-4 border-b border-border/30 flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: online ? '#22c55e' : '#f97316' }} />
+          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: live.online ? '#22c55e' : '#f97316' }} />
           <div className="min-w-0">
-            <p className="font-bold text-sm truncate">{player.name}</p>
+            <p className="font-bold text-sm truncate">{live.name}</p>
             <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-              {online ? <><Wifi className="w-3 h-3 text-green-400" /> Online</> : <><WifiOff className="w-3 h-3 text-orange-400" /> Offline</>}
+              {live.online ? <><Wifi className="w-3 h-3 text-green-400" /> Online</> : <><WifiOff className="w-3 h-3 text-orange-400" /> Offline</>}
               {provider ? <span className="text-green-400">API verbunden</span> : <span className="text-yellow-300">API-Zuweisung fehlt</span>}
             </p>
           </div>
@@ -97,24 +92,24 @@ function PlayerCard({ player, provider, playlists, commands }) {
 
       <div className="p-5 space-y-4">
         <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="bg-background/50 rounded-lg p-2 border border-border/30">SDK Ready: <span className={player.sdkReady ? 'text-green-400' : 'text-yellow-400'}>{player.sdkReady ? 'yes' : 'no'}</span></div>
-          <div className="bg-background/50 rounded-lg p-2 border border-border/30">Device: <span className="font-mono">{player.spotifyDeviceId ? 'set' : 'missing'}</span></div>
+          <div className="bg-background/50 rounded-lg p-2 border border-border/30">SDK Ready: <span className={live.sdkReady ? 'text-green-400' : 'text-yellow-400'}>{live.sdkReady ? 'yes' : 'no'}</span></div>
+          <div className="bg-background/50 rounded-lg p-2 border border-border/30">Device: <span className="font-mono">{live.spotifyDeviceId ? 'set' : 'missing'}</span></div>
         </div>
 
-        {player.currentTrackName ? (
+        {live.trackName ? (
           <>
             <div className="flex items-center gap-4">
-              {coverUrl ? <img src={coverUrl} alt="cover" className="w-16 h-16 rounded-xl shadow-lg flex-shrink-0 object-cover" /> : <div className="w-16 h-16 rounded-xl bg-muted/20 flex items-center justify-center flex-shrink-0"><Music2 className="w-8 h-8 text-muted-foreground/30" /></div>}
+              {live.coverUrl ? <img src={live.coverUrl} alt="cover" className="w-16 h-16 rounded-xl shadow-lg flex-shrink-0 object-cover" /> : <div className="w-16 h-16 rounded-xl bg-muted/20 flex items-center justify-center flex-shrink-0"><Music2 className="w-8 h-8 text-muted-foreground/30" /></div>}
               <div className="flex-1 min-w-0">
-                <p className="font-bold truncate text-sm">{player.currentTrackName}</p>
-                <p className="text-xs text-muted-foreground truncate">{player.currentTrackArtist}</p>
-                <p className="text-xs text-muted-foreground truncate">{player.currentTrackAlbum}</p>
+                <p className="font-bold truncate text-sm">{live.trackName}</p>
+                <p className="text-xs text-muted-foreground truncate">{live.artist}</p>
+                <p className="text-xs text-muted-foreground truncate">{live.album}</p>
               </div>
-              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${player.isPlaying ? 'bg-green-400 animate-pulse' : 'bg-muted-foreground'}`} />
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${live.isPlaying ? 'bg-green-400 animate-pulse' : 'bg-muted-foreground'}`} />
             </div>
             <div className="space-y-1">
-              <div className="h-1.5 bg-muted rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progressPct}%` }} /></div>
-              <div className="flex justify-between text-xs text-muted-foreground"><span>{formatMs(progress)}</span><span>{duration ? formatMs(duration) : '--:--'}</span></div>
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full transition-all" style={{ width: `${live.progressPct}%` }} /></div>
+              <div className="flex justify-between text-xs text-muted-foreground"><span>{formatMs(live.progressMs)}</span><span>{live.durationMs ? formatMs(live.durationMs) : '--:--'}</span></div>
             </div>
           </>
         ) : (
@@ -149,11 +144,11 @@ function PlayerCard({ player, provider, playlists, commands }) {
 
         <div className="rounded-lg border border-border/40 bg-background/50 p-3 text-xs space-y-1">
           <p className="flex items-center gap-1 text-muted-foreground"><Clock className="w-3 h-3" /> Letzter Command</p>
-          <p className="font-semibold">{lastCommand?.type || lastCommand?.command || player.lastCommand || '-'}</p>
+          <p className="font-semibold">{lastCommand?.type || lastCommand?.command || live.lastCommand || '-'}</p>
           <p className={lastCommand?.status === COMMAND_STATUS.SUCCESS ? 'text-green-400' : lastCommand?.status === COMMAND_STATUS.FAILED || lastCommand?.status === COMMAND_STATUS.TIMEOUT ? 'text-red-400' : 'text-yellow-300'}>
-            {lastCommand?.status || player.lastCommandStatus || '-'}
+            {lastCommand?.status || live.lastCommandStatus || '-'}
           </p>
-          {(lastCommand?.humanMessage || lastCommand?.errorCode || player.lastError) && <p className="text-muted-foreground break-words">{lastCommand?.errorCode ? `${lastCommand.errorCode}: ` : ''}{lastCommand?.humanMessage || player.lastError}</p>}
+          {(lastCommand?.humanMessage || lastCommand?.errorCode || live.lastError) && <p className="text-muted-foreground break-words">{lastCommand?.errorCode ? `${lastCommand.errorCode}: ` : ''}{lastCommand?.humanMessage || live.lastError}</p>}
         </div>
       </div>
     </div>
@@ -167,6 +162,7 @@ export default function NowPlaying() {
   const { data: playlists = [] } = useQuery({ queryKey: ['playlists'], queryFn: () => base44.entities.Playlist.list(), refetchInterval: 15000, staleTime: 10000, retry: 1 });
   const { data: commands = [] } = useQuery({ queryKey: ['playerCommands'], queryFn: () => listPlayerCommands(), refetchInterval: ADMIN_LIVE_REFETCH_INTERVAL_MS, staleTime: 1000, retry: 1 });
 
+  const livePlayers = useMemo(() => players.map(normalizePlayerLiveState), [players]);
   const playerIds = useMemo(() => players.map((player) => player.id).filter(Boolean).join('|'), [players]);
 
   useEffect(() => {
@@ -179,7 +175,7 @@ export default function NowPlaying() {
     return () => clearInterval(id);
   }, [playerIds, queryClient]);
 
-  const onlineCount = players.filter(isPlayerOnline).length;
+  const onlineCount = livePlayers.filter((player) => player.online).length;
   const pendingCount = commands.filter((cmd) => cmd.status === COMMAND_STATUS.PENDING || cmd.status === COMMAND_STATUS.PICKED_UP).length;
   const failedCount = commands.filter((cmd) => cmd.status === COMMAND_STATUS.FAILED || cmd.status === COMMAND_STATUS.TIMEOUT).length;
 
