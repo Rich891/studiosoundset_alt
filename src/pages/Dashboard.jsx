@@ -2,17 +2,17 @@ import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { Music2, MapPin, Radio, Calendar, CheckCircle2, XCircle, AlertCircle, ChevronRight, Headphones, Terminal } from 'lucide-react';
+import { Music2, Radio, Calendar, CheckCircle2, XCircle, AlertCircle, ChevronRight, Headphones, Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { isPlayerOnline, COMMAND_STATUS, listPlayerCommands } from '@/lib/studioSoundSetRuntime';
+import { ADMIN_LIVE_REFETCH_INTERVAL_MS, COMMAND_STATUS, listPlayerCommands } from '@/lib/studioSoundSetRuntime';
+import { normalizePlayerLiveState } from '@/lib/playerLiveState';
 
 const SETUP_STEPS = [
   { id: 1, title: 'Spotify Provider verbinden', desc: 'Spotify Premium App Credentials speichern und OAuth verbinden.', link: '/spotify-accounts', icon: Music2, color: 'text-green-400', bg: 'bg-green-500/10 border-green-500/20' },
-  { id: 2, title: 'Zonen konfigurieren', desc: 'Gym, Tennishalle oder weitere Bereiche anlegen.', link: '/zones', icon: MapPin, color: 'text-primary', bg: 'bg-primary/10 border-primary/20' },
-  { id: 3, title: 'Player erstellen', desc: 'Player Login erzeugen, QR öffnen und SDK Ready prüfen.', link: '/manage-players', icon: Headphones, color: 'text-cyan-400', bg: 'bg-cyan-500/10 border-cyan-500/20' },
-  { id: 4, title: 'Playlists importieren', desc: 'Playlist-Metadaten und Songs in den Katalog übernehmen.', link: '/playlists', icon: Music2, color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20' },
-  { id: 5, title: 'Command Flow testen', desc: 'Now Playing öffnet Commands, Player bestätigt Ausführung.', link: '/now-playing', icon: Radio, color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/20' },
-  { id: 6, title: 'Zeitplan erstellen', desc: 'Kalenderblöcke für automatische Steuerung anlegen.', link: '/calendar', icon: Calendar, color: 'text-yellow-400', bg: 'bg-yellow-500/10 border-yellow-500/20' },
+  { id: 2, title: 'Player erstellen', desc: 'Provider direkt am Player zuweisen, QR oeffnen und SDK Ready pruefen.', link: '/manage-players', icon: Headphones, color: 'text-cyan-400', bg: 'bg-cyan-500/10 border-cyan-500/20' },
+  { id: 3, title: 'Playlists importieren', desc: 'Playlist-Metadaten und Songs in den Katalog uebernehmen.', link: '/playlists', icon: Music2, color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20' },
+  { id: 4, title: 'Command Flow testen', desc: 'Now Playing oeffnet Commands, Player bestaetigt Ausfuehrung.', link: '/now-playing', icon: Radio, color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/20' },
+  { id: 5, title: 'Zeitplan erstellen', desc: 'Kalenderbloecke fuer automatische Steuerung anlegen.', link: '/calendar', icon: Calendar, color: 'text-yellow-400', bg: 'bg-yellow-500/10 border-yellow-500/20' },
 ];
 
 function getProviderStatus(provider) {
@@ -39,24 +39,24 @@ function SetupStep({ step, status, index }) {
 }
 
 export default function Dashboard() {
-  const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: () => base44.entities.Provider.list() });
-  const { data: zones = [] } = useQuery({ queryKey: ['zones'], queryFn: () => base44.entities.Zone.list() });
-  const { data: playlists = [] } = useQuery({ queryKey: ['playlists'], queryFn: () => base44.entities.Playlist.list() });
-  const { data: players = [] } = useQuery({ queryKey: ['players'], queryFn: () => base44.entities.Player.list('-lastSeen'), refetchInterval: 3000 });
-  const { data: commands = [] } = useQuery({ queryKey: ['playerCommands'], queryFn: () => listPlayerCommands(), refetchInterval: 3000 });
+  const { data: providers = [] } = useQuery({ queryKey: ['providers'], queryFn: () => base44.entities.Provider.list(), refetchInterval: 15000 });
+  const { data: playlists = [] } = useQuery({ queryKey: ['playlists'], queryFn: () => base44.entities.Playlist.list(), refetchInterval: 15000 });
+  const { data: players = [] } = useQuery({ queryKey: ['players'], queryFn: () => base44.entities.Player.list('-lastSeen'), refetchInterval: ADMIN_LIVE_REFETCH_INTERVAL_MS });
+  const { data: commands = [] } = useQuery({ queryKey: ['playerCommands'], queryFn: () => listPlayerCommands(), refetchInterval: ADMIN_LIVE_REFETCH_INTERVAL_MS });
 
+  const livePlayers = players.map(normalizePlayerLiveState);
   const connectedProviders = providers.filter(p => getProviderStatus(p) === 'connected');
-  const onlinePlayers = players.filter(isPlayerOnline);
+  const onlinePlayers = livePlayers.filter((player) => player.online);
+  const sdkReadyPlayers = livePlayers.filter((player) => player.sdkReady);
   const importedPlaylists = playlists.filter(p => (p.importedTracks || 0) > 0 && ['success', 'synced'].includes(p.trackSyncStatus || p.syncStatus));
   const pendingCommands = commands.filter(c => c.status === COMMAND_STATUS.PENDING || c.status === COMMAND_STATUS.PICKED_UP);
   const failedCommands = commands.filter(c => c.status === COMMAND_STATUS.FAILED || c.status === COMMAND_STATUS.TIMEOUT);
 
   const getStepStatus = (stepId) => {
     if (stepId === 1) return connectedProviders.length > 0 ? 'done' : 'open';
-    if (stepId === 2) return zones.length > 0 ? 'done' : 'open';
-    if (stepId === 3) return onlinePlayers.length > 0 ? 'done' : players.length > 0 ? 'in_progress' : 'open';
-    if (stepId === 4) return importedPlaylists.length > 0 ? 'done' : playlists.length > 0 ? 'in_progress' : 'open';
-    if (stepId === 5) return commands.some(c => c.status === COMMAND_STATUS.SUCCESS) ? 'done' : onlinePlayers.length > 0 ? 'open' : 'open';
+    if (stepId === 2) return sdkReadyPlayers.length > 0 ? 'done' : players.length > 0 ? 'in_progress' : 'open';
+    if (stepId === 3) return importedPlaylists.length > 0 ? 'done' : playlists.length > 0 ? 'in_progress' : 'open';
+    if (stepId === 4) return commands.some(c => c.status === COMMAND_STATUS.SUCCESS) ? 'done' : onlinePlayers.length > 0 ? 'open' : 'open';
     return 'open';
   };
 
@@ -68,16 +68,16 @@ export default function Dashboard() {
     <div className="p-4 lg:p-8 space-y-8 max-w-7xl mx-auto">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl lg:text-3xl font-black gradient-text">StudioSoundSet Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">Overview of players, zones, playback and system health.</p>
+        <p className="text-sm text-muted-foreground mt-1">Overview of players, playback and system health.</p>
       </motion.div>
 
-      {hasWarnings && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bento-panel border-yellow-500/20 bg-yellow-500/5 p-4 flex items-center gap-3"><AlertCircle className="w-5 h-5 text-yellow-400 flex-shrink-0" /><div className="flex-1"><p className="text-sm font-semibold text-yellow-300">System-Warnungen vorhanden</p><p className="text-xs text-muted-foreground mt-0.5">Prüfe Spotify Provider, Commands und Playlist-Sync.</p></div><Link to="/system-check"><Button size="sm" variant="outline">System Check</Button></Link></motion.div>}
+      {hasWarnings && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bento-panel border-yellow-500/20 bg-yellow-500/5 p-4 flex items-center gap-3"><AlertCircle className="w-5 h-5 text-yellow-400 flex-shrink-0" /><div className="flex-1"><p className="text-sm font-semibold text-yellow-300">System-Warnungen vorhanden</p><p className="text-xs text-muted-foreground mt-0.5">Pruefe Spotify Provider, Commands und Playlist-Sync.</p></div><Link to="/system-check"><Button size="sm" variant="outline">System Check</Button></Link></motion.div>}
 
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
           { label: 'Providers', value: providers.length, sub: `${connectedProviders.length} connected`, color: 'text-green-400', icon: Music2, link: '/spotify-accounts' },
-          { label: 'Players', value: players.length, sub: `${onlinePlayers.length} online`, color: 'text-cyan-400', icon: Headphones, link: '/manage-players' },
-          { label: 'Zones', value: zones.length, sub: 'configured areas', color: 'text-primary', icon: MapPin, link: '/zones' },
+          { label: 'Players', value: players.length, sub: `${onlinePlayers.length} online / ${sdkReadyPlayers.length} sdk`, color: 'text-cyan-400', icon: Headphones, link: '/manage-players' },
+          { label: 'Now Playing', value: livePlayers.filter((p) => p.trackName).length, sub: 'active players', color: 'text-rose-400', icon: Radio, link: '/now-playing' },
           { label: 'Playlists', value: playlists.length, sub: `${importedPlaylists.length} with tracks`, color: 'text-violet-400', icon: Music2, link: '/playlists' },
           { label: 'Commands', value: pendingCommands.length, sub: `${failedCommands.length} failed`, color: pendingCommands.length ? 'text-yellow-300' : 'text-green-400', icon: Terminal, link: '/commands' },
         ].map((stat, i) => (
@@ -92,7 +92,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{SETUP_STEPS.map((step, i) => <SetupStep key={step.id} step={step} status={getStepStatus(step.id)} index={i} />)}</div>
       </div>
 
-      <div className="bento-panel border-border/30 p-4 text-xs text-muted-foreground space-y-1"><p className="font-bold text-foreground/60">Hinweis</p><p>Admin und Player sollten auf getrennten Geräten, Browserprofilen oder Inkognito-Fenstern getestet werden. Im selben Browserprofil kann die Session ersetzt werden.</p></div>
+      <div className="bento-panel border-border/30 p-4 text-xs text-muted-foreground space-y-1"><p className="font-bold text-foreground/60">Hinweis</p><p>Admin und Player sollten auf getrennten Geraeten, Browserprofilen oder Inkognito-Fenstern getestet werden. Im selben Browserprofil kann die Session ersetzt werden.</p></div>
     </div>
   );
 }
